@@ -2,7 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Proxmox](https://img.shields.io/badge/Proxmox-VE%208.0+-orange)](https://www.proxmox.com/)
-[![GitHub Workflow Status](https://github.com/yourusername/proxmox-homelab-template/workflows/Deploy/badge.svg)](https://github.com/yourusername/proxmox-homelab-template/actions)
+[![GitHub Workflow Status](https://github.com/Khizar-Hussian/proxmox-homelab-template/workflows/Deploy/badge.svg)](https://github.com/Khizar-Hussian/proxmox-homelab-template/actions)
+[![GitHub stars](https://img.shields.io/github/stars/Khizar-Hussian/proxmox-homelab-template?style=social)](https://github.com/Khizar-Hussian/proxmox-homelab-template/stargazers)
 
 > 🏠 **A production-ready homelab template for Proxmox with LXC containers, full TLS, and GitOps automation**
 
