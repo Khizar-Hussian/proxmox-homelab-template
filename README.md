@@ -453,13 +453,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🌟 Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/proxmox-homelab-template&type=Date)](https://star-history.com/#yourusername/proxmox-homelab-template&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Khizar-Hussian/proxmox-homelab-template&type=Date)](https://star-history.com/#Khizar-Hussian/proxmox-homelab-template&Date)
 
 ---
 
 <div align="center">
 
-**[⭐ Star this repository](https://github.com/yourusername/proxmox-homelab-template)** if you found it helpful!
+**[⭐ Star this repository](https://github.com/Khizar-Hussian/proxmox-homelab-template)** if you found it helpful!
 
 Made with ❤️ for the homelab community
 
