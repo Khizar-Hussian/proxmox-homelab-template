@@ -1,0 +1,123 @@
+# Environment and secrets
+.env
+.env.local
+.env.production
+*.secret
+*.key
+*.pem
+*.crt
+*.csr
+
+# Configuration files with sensitive data
+config/cluster.yaml
+config/secrets/
+private/
+.private/
+
+# Backup files
+*.backup
+*.bak
+*~
+.backup/
+
+# Log files
+*.log
+logs/
+.logs/
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+
+# Certificate files (generated, not templates)
+certificates/
+*.cert
+ssl/
+
+# Runtime data
+.pid
+*.pid
+*.sock
+run/
+.run/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vim/
+.emacs.d/
+
+# Node modules (if any automation tools use Node)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python cache (if any Python scripts)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Terraform (if used for cloud resources)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Ansible
+*.retry
+.ansible/
+
+# Local development and testing
+.local/
+development/
+test-data/
+test-env/
+
+# Proxmox specific
+vzdump-*.tar.gz
+vzdump-*.tar.lz4
+*.img
+
+# GitHub Actions runner
+_work/
+.runner/
+
+# Documentation builds
+_site/
+.jekyll-cache/
+.jekyll-metadata
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/

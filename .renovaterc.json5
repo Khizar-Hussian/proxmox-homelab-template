@@ -1,0 +1,280 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    "docker:enableMajor",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":automergeDigest",
+    ":automergeBranchPush"
+  ],
+  
+  // Repository Configuration
+  "platform": "github",
+  "username": "renovate-bot",
+  "gitAuthor": "Renovate Bot <renovate@yourdomain.com>",
+  "onboarding": false,
+  "requireConfig": "optional",
+  
+  // Update Schedule
+  "timezone": "America/New_York",
+  "schedule": ["before 6am on monday"],
+  
+  // Pull Request Configuration
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2,
+  "branchConcurrentLimit": 10,
+  
+  // Commit and PR Settings
+  "commitMessagePrefix": "⬆️",
+  "commitMessageAction": "update",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "to {{newVersion}}",
+  "semanticCommits": "enabled",
+  
+  // Package File Discovery
+  "fileMatch": [
+    // Docker Compose files
+    "(^|/)docker-compose\\.ya?ml$",
+    "(^|/)compose\\.ya?ml$",
+    
+    // Service configuration files
+    "^config/services/.+/docker-compose\\.ya?ml$",
+    "^config/services/.+/container\\.ya?ml$",
+    
+    // Template files
+    "^templates/docker-compose/.+\\.ya?ml$",
+    
+    // GitHub Actions
+    "^\\.github/workflows/.+\\.ya?ml$"
+  ],
+  
+  // Docker Configuration
+  "docker": {
+    "enabled": true,
+    "automerge": false,
+    "major": {
+      "enabled": true
+    },
+    "minor": {
+      "enabled": true,
+      "automerge": true
+    },
+    "patch": {
+      "enabled": true,
+      "automerge": true
+    },
+    "digest": {
+      "enabled": true,
+      "automerge": true
+    }
+  },
+  
+  // Custom Regex Managers for our Docker Compose format
+  "regexManagers": [
+    {
+      "description": "Update Docker images in docker-compose.yml files",
+      "fileMatch": [
+        "(^|/)docker-compose\\.ya?ml$",
+        "^config/services/.+/docker-compose\\.ya?ml$"
+      ],
+      "matchStrings": [
+        "image:\\s*[\"']?(?<depName>[^:]+):(?<currentValue>[^\"'\\s]+)[\"']?",
+        "image:\\s*[\"']?(?<depName>[^:\"'\\s]+)[\"']?\\s*#\\s*renovate:\\s*datasource=(?<datasource>\\S+)"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "description": "Update container images in container.yaml files",
+      "fileMatch": ["^config/services/.+/container\\.ya?ml$"],
+      "matchStrings": [
+        "image:\\s*[\"']?(?<depName>[^:]+):(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "description": "Update GitHub Actions versions",
+      "fileMatch": ["^\\.github/workflows/.+\\.ya?ml$"],
+      "matchStrings": [
+        "uses:\\s*(?<depName>[^@]+)@(?<currentValue>v?\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "github-releases"
+    }
+  ],
+  
+  // Package Rules for Different Update Strategies
+  "packageRules": [
+    {
+      "description": "Automerge Docker digest updates",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": true,
+      "commitMessagePrefix": "🔄"
+    },
+    {
+      "description": "Automerge patch and minor updates for stable images",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": [
+        "nginx",
+        "mariadb",
+        "postgres",
+        "redis",
+        "traefik",
+        "grafana/grafana",
+        "prom/prometheus"
+      ],
+      "automerge": true,
+      "commitMessagePrefix": "⬆️"
+    },
+    {
+      "description": "Group LinuxServer.io image updates",
+      "matchDatasources": ["docker"],
+      "matchPackagePatterns": ["^lscr\\.io/linuxserver/"],
+      "groupName": "LinuxServer.io images",
+      "schedule": ["before 6am on monday"],
+      "commitMessagePrefix": "📦",
+      "automerge": false
+    },
+    {
+      "description": "Group Arr stack updates together",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "lscr.io/linuxserver/sonarr",
+        "lscr.io/linuxserver/radarr",
+        "lscr.io/linuxserver/prowlarr",
+        "lscr.io/linuxserver/lidarr",
+        "lscr.io/linuxserver/readarr",
+        "lscr.io/linuxserver/bazarr"
+      ],
+      "groupName": "*arr stack",
+      "schedule": ["before 6am on monday"],
+      "commitMessagePrefix": "📺",
+      "automerge": false
+    },
+    {
+      "description": "Group media server updates",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "lscr.io/linuxserver/jellyfin",
+        "lscr.io/linuxserver/plex",
+        "lscr.io/linuxserver/emby"
+      ],
+      "groupName": "Media servers",
+      "schedule": ["before 6am on monday"],
+      "commitMessagePrefix": "🎬",
+      "automerge": false
+    },
+    {
+      "description": "Group monitoring stack updates",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "grafana/grafana",
+        "prom/prometheus",
+        "prom/alertmanager",
+        "grafana/loki",
+        "grafana/promtail"
+      ],
+      "groupName": "Monitoring stack",
+      "schedule": ["before 6am on monday"],
+      "commitMessagePrefix": "📊",
+      "automerge": false
+    },
+    {
+      "description": "Pin major database versions",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "postgres",
+        "mariadb",
+        "mysql",
+        "redis"
+      ],
+      "matchUpdateTypes": ["major"],
+      "enabled": false,
+      "commitMessagePrefix": "🔒"
+    },
+    {
+      "description": "Schedule security-critical updates immediately",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "nginx",
+        "traefik",
+        "linuxserver/nginx",
+        "jc21/nginx-proxy-manager"
+      ],
+      "schedule": ["at any time"],
+      "commitMessagePrefix": "🔒",
+      "automerge": false,
+      "labels": ["security", "priority"]
+    },
+    {
+      "description": "Disable updates for custom or local images",
+      "matchDatasources": ["docker"],
+      "matchPackagePatterns": [
+        "^localhost/",
+        "^registry\\.local/",
+        "^custom/"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "GitHub Actions updates",
+      "matchDatasources": ["github-releases"],
+      "matchFileNames": [".github/workflows/**"],
+      "schedule": ["before 6am on monday"],
+      "commitMessagePrefix": "🔧",
+      "automerge": true,
+      "groupName": "GitHub Actions"
+    }
+  ],
+  
+  // Vulnerability Alerts
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "commitMessagePrefix": "🚨",
+    "labels": ["security", "vulnerability"],
+    "automerge": false
+  },
+  
+  // Custom Labels
+  "labels": ["dependencies", "renovate"],
+  
+  // PR Templates
+  "prBodyTemplate": "This PR updates {{depName}} from `{{currentVersion}}` to `{{newVersion}}`.\n\n**Release Notes:** {{#if hasReleaseNotes}}[{{newVersion}}]({{releaseNotesUrl}}){{else}}No release notes available{{/if}}\n\n**Important:** \n- Review changelog for breaking changes\n- Test in development environment before merging\n- Monitor service health after deployment\n\n---\n*This PR was automatically generated by Renovate Bot*",
+  
+  // Ignore Patterns
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/.git/**",
+    "**/vendor/**",
+    "examples/**"
+  ],
+  
+  // Custom Datasources
+  "customDatasources": {
+    "proxmox-helper-scripts": {
+      "defaultRegistryUrlTemplate": "https://api.github.com/repos/tteck/Proxmox",
+      "format": "json"
+    }
+  },
+  
+  // Branch and Commit Naming
+  "branchPrefix": "renovate/",
+  "branchNameStrict": true,
+  
+  // Logging
+  "logLevel": "info",
+  
+  // Rate Limiting
+  "prConcurrentLimit": 3,
+  "branchConcurrentLimit": 10,
+  
+  // Assignees and Reviewers
+  "assignees": ["@yourusername"],
+  "reviewers": ["@yourusername"],
+  
+  // Post-update Tasks
+  "postUpdateOptions": ["dockerfileUpdate", "goModTidy"]
+}
