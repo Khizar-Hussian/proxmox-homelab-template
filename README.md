@@ -100,9 +100,39 @@ Add these secrets to your GitHub repository (`Settings > Secrets and variables >
 | `PROXMOX_TOKEN` | Proxmox API token | ✅ |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare API token for DNS | ✅ |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Cloudflare tunnel token | ✅ |
-| `NORDVPN_PRIVATE_KEY` | NordVPN WireGuard key | Optional |
-| `DISCORD_WEBHOOK` | Discord webhook for notifications | Optional |
-| `EMAIL_RECIPIENT` | Email for alerts | Optional |
+| `AUTHENTIK_ADMIN_PASSWORD` | Authentik admin password | ✅ |
+| `NORDVPN_PRIVATE_KEY` | NordVPN WireGuard key | 🔧 |
+| `DISCORD_WEBHOOK` | Discord webhook for notifications | 💡 |
+| `EMAIL_RECIPIENT` | Email for alerts | 💡 |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID | 💡 |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | 💡 |
+| `GITHUB_CLIENT_ID` | GitHub OAuth client ID | 💡 |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth client secret | 💡 |
+
+**Legend**: ✅ Required, 🔧 Recommended, 💡 Optional
+
+#### Getting Required Secrets:
+
+**Authentik Admin Password:**
+1. Generate a secure password: `openssl rand -base64 32`
+2. This will be the admin password for your Authentik instance
+3. Store securely in your password manager
+
+**Google OAuth (for Authentik SSO):**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create new project or select existing
+3. Enable Google+ API
+4. Go to **Credentials > Create Credentials > OAuth client ID**
+5. Set **Application type**: Web application
+6. Add **Authorized redirect URIs**: `https://auth.yourdomain.com/source/oauth/callback/google/`
+7. Copy Client ID and Client Secret
+
+**GitHub OAuth (for Authentik SSO):**
+1. Go to GitHub **Settings > Developer settings > OAuth Apps**
+2. Click **New OAuth App**
+3. Set **Homepage URL**: `https://auth.yourdomain.com`
+4. Set **Authorization callback URL**: `https://auth.yourdomain.com/source/oauth/callback/github/`
+5. Copy Client ID and generate Client Secret
 
 ### 4. Deploy Infrastructure
 
@@ -138,11 +168,13 @@ After deployment (5-10 minutes), you'll have:
 | **Nginx Proxy Manager** | `https://proxy.yourdomain.com:81` | Reverse proxy management |
 | **Pi-hole** | `https://pihole.yourdomain.com/admin` | DNS and ad-blocking |
 | **Grafana** | `https://grafana.yourdomain.com` | Monitoring dashboards |
+| **Authentik** | `https://auth.yourdomain.com` | Authentication and SSO |
 
 **Default credentials** (change immediately):
 - Nginx Proxy Manager: `admin@example.com` / `changeme`
 - Pi-hole: `admin` / `admin`
 - Grafana: `admin` / `admin`
+- Authentik: `admin@yourdomain.com` / `[your AUTHENTIK_ADMIN_PASSWORD]`
 
 ## 📦 Adding Services
 
@@ -355,6 +387,23 @@ Comprehensive documentation is available:
 - **Backup Encryption**: All backups encrypted with GPG
 - **Audit Logging**: Comprehensive logs for security monitoring
 - **Secret Management**: Passwords auto-generated and stored securely
+
+### 🔒 Authentication Flow
+
+The template uses **Authentik** for centralized authentication:
+
+1. **Visit any protected service** (e.g., `grafana.yourdomain.com`)
+2. **Redirect to Authentik** if not logged in (`auth.yourdomain.com`)
+3. **Login with credentials** + optional MFA (TOTP, WebAuthn)
+4. **Automatic access** to all protected services
+5. **Single logout** logs out of everything
+
+**Supported Authentication Methods:**
+- Local users (Authentik database)
+- Google SSO (optional)
+- GitHub SSO (optional)
+- LDAP/Active Directory (optional)
+- Multi-factor authentication (TOTP, hardware keys)
 
 ### 🔒 Password Security
 
