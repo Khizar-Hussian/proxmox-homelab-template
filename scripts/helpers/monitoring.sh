@@ -20,12 +20,416 @@ setup_monitoring_stack() {
         return 0
     fi
     
-    configure_prometheus || return 1
-    configure_grafana || return 1
-    setup_service_monitoring || return 1
-    configure_alerting || return 1
+    configure_prometheus_targets || return 1
+    setup_grafana_datasources || return 1
+    configure_alerting_rules || return 1
+    verify_monitoring_health || return 1
     
     log "SUCCESS" "Monitoring stack setup completed"
+}
+
+configure_prometheus_targets() {
+    local monitoring_ip=$(get_config '.networks.core_services.monitoring')
+    
+    if [[ "$monitoring_ip" == "null" ]]; then
+        log "WARN" "Monitoring service not configured, skipping Prometheus setup"
+        return 0
+    fi
+    
+    local container_id="1${monitoring_ip##*.}"
+    
+    log "INFO" "Configuring Prometheus service discovery..."
+    
+    if ! container_exists "$container_id"; then
+        log "WARN" "Monitoring container $container_id not found"
+        return 0
+    fi
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Update Prometheus configuration with all services
+        container_exec "$container_id" bash -c "cat > /opt/monitoring/prometheus.yml << 'EOF'
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: '$(get_config '.cluster.name')'
+    environment: 'homelab'
+
+rule_files:
+  - '/etc/prometheus/alert_rules.yml'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15s
+
+  # Proxmox host monitoring
+  - job_name: 'proxmox-host'
+    static_configs:
+      - targets: ['$(get_config '.proxmox.host'):9100']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Pi-hole monitoring
+  - job_name: 'pihole'
+    static_configs:
+      - targets: ['$(get_config '.networks.core_services.pihole' '10.0.0.40'):9617']
+    scrape_interval: 30s
+
+  # Nginx Proxy Manager monitoring  
+  - job_name: 'nginx-proxy'
+    static_configs:
+      - targets: ['$(get_config '.networks.core_services.nginx_proxy' '10.0.0.41'):9113']
+    scrape_interval: 30s
+
+  # VPN Gateway monitoring
+  - job_name: 'vpn-gateway'
+    static_configs:
+      - targets: ['$(get_config '.networks.core_services.vpn_gateway' '10.0.0.39'):8001']
+    scrape_interval: 30s
+
+  # Container monitoring (cAdvisor)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['localhost:8080']
+    scrape_interval: 30s
+
+  # Node exporter (system metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['localhost:9100']
+    scrape_interval: 30s
+EOF"
+        
+        # Add user services to monitoring
+        add_user_services_to_prometheus "$container_id"
+        
+        # Restart Prometheus to apply configuration
+        container_exec "$container_id" bash -c "
+            cd /opt/monitoring &&
+            docker compose restart prometheus
+        "
+        
+        log "SUCCESS" "Prometheus targets configured"
+    else
+        log "INFO" "[DRY RUN] Would configure Prometheus targets"
+    fi
+}
+
+add_user_services_to_prometheus() {
+    local container_id="$1"
+    
+    # Add monitoring for user services
+    local services_dir="$PROJECT_ROOT/config/services"
+    if [[ -d "$services_dir" ]]; then
+        for service_dir in "$services_dir"/*; do
+            if [[ -d "$service_dir" ]]; then
+                local service_name=$(basename "$service_dir")
+                local container_config="$service_dir/container.yaml"
+                
+                # Skip core services and examples
+                if [[ "$service_name" =~ ^(pihole|nginx-proxy|monitoring|authentik|vpn-gateway|homepage|examples)$ ]]; then
+                    continue
+                fi
+                
+                if [[ -f "$container_config" ]]; then
+                    local service_ip=$(yq eval '.container.ip' "$container_config")
+                    
+                    if [[ "$service_ip" != "null" ]]; then
+                        # Add basic HTTP monitoring for user services
+                        container_exec "$container_id" bash -c "cat >> /opt/monitoring/prometheus.yml << EOF
+
+  # User service: $service_name
+  - job_name: '$service_name'
+    static_configs:
+      - targets: ['$service_ip:80']
+    scrape_interval: 60s
+    metrics_path: /metrics
+    honor_labels: true
+EOF"
+                        log "DEBUG" "Added monitoring for user service: $service_name"
+                    fi
+                fi
+            fi
+        done
+    fi
+}
+
+setup_grafana_datasources() {
+    local monitoring_ip=$(get_config '.networks.core_services.monitoring')
+    local container_id="1${monitoring_ip##*.}"
+    
+    log "INFO" "Setting up Grafana datasources..."
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Wait for Grafana to be ready
+        local timeout=120
+        local elapsed=0
+        while [[ $elapsed -lt $timeout ]]; do
+            if container_exec "$container_id" curl -s http://localhost:3000/api/health >/dev/null 2>&1; then
+                break
+            fi
+            sleep 5
+            ((elapsed += 5))
+        done
+        
+        # Create datasource provisioning config
+        container_exec "$container_id" bash -c "
+            mkdir -p /opt/monitoring/grafana/provisioning/{datasources,dashboards} &&
+            cat > /opt/monitoring/grafana/provisioning/datasources/prometheus.yml << 'EOF'
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    basicAuth: false
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST
+EOF"
+        
+        # Create dashboard provisioning config
+        container_exec "$container_id" bash -c "cat > /opt/monitoring/grafana/provisioning/dashboards/homelab.yml << 'EOF'
+apiVersion: 1
+
+providers:
+  - name: 'Homelab Dashboards'
+    orgId: 1
+    folder: 'Homelab'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+EOF"
+        
+        # Restart Grafana to apply datasource
+        container_exec "$container_id" bash -c "
+            cd /opt/monitoring &&
+            docker compose restart grafana
+        "
+        
+        log "SUCCESS" "Grafana datasources configured"
+    else
+        log "INFO" "[DRY RUN] Would setup Grafana datasources"
+    fi
+}
+
+configure_alerting_rules() {
+    local monitoring_ip=$(get_config '.networks.core_services.monitoring')
+    local container_id="1${monitoring_ip##*.}"
+    
+    log "INFO" "Configuring alerting rules..."
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Create comprehensive alert rules
+        container_exec "$container_id" bash -c "cat > /opt/monitoring/alert_rules.yml << 'EOF'
+groups:
+  - name: homelab.rules
+    rules:
+    # Infrastructure alerts
+    - alert: ServiceDown
+      expr: up == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: 'Service {{ \$labels.instance }} is down'
+        description: 'Service {{ \$labels.instance }} has been down for more than 5 minutes.'
+
+    - alert: HighCPUUsage
+      expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100) > 85
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: 'High CPU usage on {{ \$labels.instance }}'
+        description: 'CPU usage is above 85% for more than 10 minutes.'
+
+    - alert: LowDiskSpace
+      expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 10
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: 'Low disk space on {{ \$labels.instance }}'
+        description: 'Disk space is below 10% on {{ \$labels.instance }}.'
+
+    - alert: HighMemoryUsage
+      expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 90
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: 'High memory usage on {{ \$labels.instance }}'
+        description: 'Memory usage is above 90% for more than 10 minutes.'
+
+    # Service-specific alerts
+    - alert: PiholeDown
+      expr: pihole_up == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: 'Pi-hole is down'
+        description: 'Pi-hole DNS service is not responding.'
+
+    - alert: NginxProxyDown
+      expr: nginx_up == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: 'Nginx Proxy Manager is down'
+        description: 'Nginx Proxy Manager is not responding.'
+
+    - alert: VPNDisconnected
+      expr: gluetun_vpn_status != 1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: 'VPN connection lost'
+        description: 'VPN gateway has lost connection to VPN provider.'
+
+    # Certificate alerts
+    - alert: SSLCertificateExpiringSoon
+      expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 30
+      for: 1h
+      labels:
+        severity: warning
+      annotations:
+        summary: 'SSL certificate expiring soon for {{ \$labels.instance }}'
+        description: 'SSL certificate for {{ \$labels.instance }} expires in less than 30 days.'
+
+    - alert: SSLCertificateExpired
+      expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: 'SSL certificate expired for {{ \$labels.instance }}'
+        description: 'SSL certificate for {{ \$labels.instance }} has expired.'
+EOF"
+        
+        log "SUCCESS" "Alert rules configured"
+    else
+        log "INFO" "[DRY RUN] Would configure alerting rules"
+    fi
+}
+
+verify_monitoring_health() {
+    local monitoring_ip=$(get_config '.networks.core_services.monitoring')
+    
+    if [[ "$monitoring_ip" == "null" || "$DRY_RUN" == "true" ]]; then
+        return 0
+    fi
+    
+    log "INFO" "Verifying monitoring stack health..."
+    
+    local container_id="1${monitoring_ip##*.}"
+    local health_issues=()
+    
+    # Check Prometheus
+    if ! container_exec "$container_id" curl -s http://localhost:9090/-/healthy >/dev/null 2>&1; then
+        health_issues+=("Prometheus")
+    fi
+    
+    # Check Grafana
+    if ! container_exec "$container_id" curl -s http://localhost:3000/api/health >/dev/null 2>&1; then
+        health_issues+=("Grafana")
+    fi
+    
+    # Check Alertmanager
+    if ! container_exec "$container_id" curl -s http://localhost:9093/-/healthy >/dev/null 2>&1; then
+        health_issues+=("Alertmanager")
+    fi
+    
+    if [[ ${#health_issues[@]} -eq 0 ]]; then
+        log "SUCCESS" "Monitoring stack is healthy"
+        return 0
+    else
+        log "WARN" "Monitoring health issues: ${health_issues[*]}"
+        return 1
+    fi
+}
+
+# Setup service-specific monitoring
+setup_service_monitoring() {
+    log "INFO" "Setting up service-specific monitoring..."
+    
+    # This function would set up monitoring for specific services
+    # like database metrics, application metrics, etc.
+    
+    local services_dir="$PROJECT_ROOT/config/services"
+    if [[ -d "$services_dir" ]]; then
+        for service_dir in "$services_dir"/*; do
+            if [[ -d "$service_dir" ]]; then
+                local service_name=$(basename "$service_dir")
+                setup_service_metrics "$service_name"
+            fi
+        done
+    fi
+}
+
+setup_service_metrics() {
+    local service_name="$1"
+    
+    log "DEBUG" "Setting up metrics for service: $service_name"
+    
+    # Add service-specific monitoring configuration
+    # This could include:
+    # - Database metrics exporters
+    # - Application metrics endpoints
+    # - Custom health check endpoints
+}
+
+# Check monitoring health
+check_monitoring_health() {
+    local monitoring_ip=$(get_config '.networks.core_services.monitoring')
+    
+    if [[ "$monitoring_ip" == "null" ]]; then
+        log "INFO" "Monitoring not configured"
+        return 0
+    fi
+    
+    log "INFO" "Checking monitoring stack health..."
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "INFO" "[DRY RUN] Would check monitoring health"
+        return 0
+    fi
+    
+    # Check Prometheus
+    if curl -s --connect-timeout 5 "http://$monitoring_ip:9090/-/healthy" >/dev/null; then
+        log "SUCCESS" "Prometheus is healthy"
+    else
+        log "WARN" "Prometheus health check failed"
+        return 1
+    fi
+    
+    # Check Grafana
+    if curl -s --connect-timeout 5 "http://$monitoring_ip:3000/api/health" >/dev/null; then
+        log "SUCCESS" "Grafana is healthy"
+    else
+        log "WARN" "Grafana health check failed"
+        return 1
+    fi
+    
+    return 0
 }
 
 configure_prometheus() {

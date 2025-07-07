@@ -10,41 +10,87 @@
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/containers.sh"
 
-deploy_user_services() {
-    log "STEP" "Deploying user services..."
+# Main function - now handles ALL services (core + user)
+deploy_all_services() {
+    log "STEP" "Deploying all services (core + user)..."
     
+    deploy_auto_services || return 1
+    deploy_manual_services || return 1
+    
+    log "SUCCESS" "All services deployment completed"
+}
+
+# Deploy core services automatically (from auto_deploy configuration)
+deploy_auto_services() {
+    log "INFO" "Deploying auto-deploy services..."
+    
+    # Get auto-deploy service list from configuration
+    local auto_deploy_services=($(get_config '.services.auto_deploy[]' | tr '\n' ' '))
+    local deploy_order=($(get_config '.services.deploy_order[]' | tr '\n' ' '))
+    
+    # Use deploy_order if specified, otherwise use auto_deploy order
+    local services_to_deploy=("${deploy_order[@]:-${auto_deploy_services[@]}}")
+    
+    if [[ ${#services_to_deploy[@]} -eq 0 ]]; then
+        log "WARN" "No auto-deploy services configured"
+        return 0
+    fi
+    
+    log "INFO" "Auto-deploying services: ${services_to_deploy[*]}"
+    
+    for service in "${services_to_deploy[@]}"; do
+        deploy_service "$service" "auto" || return 1
+    done
+    
+    log "SUCCESS" "Auto-deploy services completed"
+}
+
+# Deploy user services (not in auto_deploy list)
+deploy_manual_services() {
     local services_dir="$PROJECT_ROOT/config/services"
     
     if [[ ! -d "$services_dir" ]]; then
-        log "INFO" "No services directory found, skipping service deployment"
+        log "INFO" "No services directory found, skipping manual service deployment"
         return 0
     fi
+    
+    log "INFO" "Deploying manual services..."
+    
+    # Get auto-deploy list to skip those services
+    local auto_deploy_services=($(get_config '.services.auto_deploy[]' | tr '\n' ' '))
     
     # Find all service directories
-    local services=()
+    local manual_services=()
     while IFS= read -r -d '' service_dir; do
-        services+=($(basename "$service_dir"))
+        local service_name=$(basename "$service_dir")
+        
+        # Skip if it's in auto_deploy list or examples directory
+        if [[ ! " ${auto_deploy_services[*]} " =~ " ${service_name} " ]] && [[ "$service_name" != "examples" ]]; then
+            manual_services+=("$service_name")
+        fi
     done < <(find "$services_dir" -mindepth 1 -maxdepth 1 -type d -print0)
     
-    if [[ ${#services[@]} -eq 0 ]]; then
-        log "INFO" "No services found in $services_dir"
+    if [[ ${#manual_services[@]} -eq 0 ]]; then
+        log "INFO" "No manual services found"
         return 0
     fi
     
-    log "INFO" "Found ${#services[@]} services: ${services[*]}"
+    log "INFO" "Found ${#manual_services[@]} manual services: ${manual_services[*]}"
     
-    for service in "${services[@]}"; do
-        deploy_user_service "$service" || return 1
+    for service in "${manual_services[@]}"; do
+        deploy_service "$service" "manual" || return 1
     done
     
-    log "SUCCESS" "User services deployment completed"
+    log "SUCCESS" "Manual services deployment completed"
 }
 
-deploy_user_service() {
+# Unified service deployment function (replaces deploy_user_service)
+deploy_service() {
     local service_name="$1"
+    local deployment_type="${2:-manual}"  # auto or manual
     local service_dir="$PROJECT_ROOT/config/services/$service_name"
     
-    log "INFO" "Deploying service: $service_name"
+    log "INFO" "Deploying $deployment_type service: $service_name"
     
     # Validate service configuration
     validate_service_config "$service_name" || return 1
@@ -73,6 +119,16 @@ deploy_user_service() {
     verify_service_health "$service_name" "$container_id" || return 1
     
     log "SUCCESS" "Service $service_name deployed successfully"
+}
+
+# Legacy function name for backward compatibility
+deploy_user_services() {
+    deploy_all_services "$@"
+}
+
+# Legacy function name for backward compatibility  
+deploy_user_service() {
+    deploy_service "$@"
 }
 
 validate_service_config() {

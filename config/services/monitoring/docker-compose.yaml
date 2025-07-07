@@ -1,0 +1,256 @@
+version: '3.8'
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                   PROMETHEUS + GRAFANA MONITORING STACK                     ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# 🎯 Complete monitoring solution for homelab infrastructure and services
+# 📊 Prometheus: Metrics collection and alerting
+# 📈 Grafana: Visualization and dashboards  
+# 🚨 Alertmanager: Alert routing and notifications
+
+services:
+  # Prometheus - Metrics collection and storage
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    hostname: prometheus.${DOMAIN:-homelab.local}
+    restart: unless-stopped
+    
+    ports:
+      - "9090:9090"   # Prometheus web interface
+      
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=10GB'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+      
+    volumes:
+      # Configuration
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      
+      # Data storage
+      - prometheus-data:/prometheus
+      
+      # Optional: Long-term storage on NFS
+      - /data/persistent/prometheus:/data/persistent
+      
+    networks:
+      - monitoring
+      - homelab
+      
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      
+    labels:
+      - "com.homelab.service=prometheus"
+      - "com.homelab.category=monitoring"
+
+  # Grafana - Visualization and dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    hostname: grafana.${DOMAIN:-homelab.local}
+    restart: unless-stopped
+    
+    ports:
+      - "3000:3000"   # Grafana web interface
+      
+    environment:
+      # Basic configuration
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: false
+      
+      # Server configuration
+      GF_SERVER_DOMAIN: grafana.${DOMAIN:-homelab.local}
+      GF_SERVER_ROOT_URL: https://grafana.${DOMAIN:-homelab.local}
+      
+      # Database configuration (SQLite for simplicity)
+      GF_DATABASE_TYPE: sqlite3
+      GF_DATABASE_PATH: /var/lib/grafana/grafana.db
+      
+      # Authentication integration (optional Authentik SSO)
+      GF_AUTH_OAUTH_AUTO_LOGIN: false
+      
+      # SMTP configuration for alerts (optional)
+      GF_SMTP_ENABLED: ${SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${SMTP_HOST:-localhost:587}
+      GF_SMTP_USER: ${SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${SMTP_FROM:-grafana@${DOMAIN}}
+      
+    volumes:
+      # Data storage
+      - grafana-data:/var/lib/grafana
+      
+      # Dashboard provisioning
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+      
+    depends_on:
+      - prometheus
+      
+    networks:
+      - monitoring
+      - homelab
+      
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      
+    labels:
+      - "com.homelab.service=grafana"
+      - "com.homelab.category=monitoring"
+
+  # Alertmanager - Alert routing and notifications
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    hostname: alertmanager.${DOMAIN:-homelab.local}
+    restart: unless-stopped
+    
+    ports:
+      - "9093:9093"   # Alertmanager web interface
+      
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=https://alertmanager.${DOMAIN:-homelab.local}'
+      
+    volumes:
+      # Configuration
+      - ./config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      
+      # Data storage
+      - alertmanager-data:/alertmanager
+      
+    networks:
+      - monitoring
+      - homelab
+      
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      
+    labels:
+      - "com.homelab.service=alertmanager"
+      - "com.homelab.category=monitoring"
+
+  # Node Exporter - System metrics for Proxmox host
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    
+    ports:
+      - "9100:9100"   # Node exporter metrics
+      
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)'
+      
+    volumes:
+      # Host system access for metrics
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      
+    networks:
+      - monitoring
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+          
+    labels:
+      - "com.homelab.service=node-exporter"
+      - "com.homelab.category=monitoring"
+
+  # cAdvisor - Container metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    
+    ports:
+      - "8080:8080"   # cAdvisor web interface
+      
+    volumes:
+      # Container runtime access
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      
+    privileged: true
+    
+    networks:
+      - monitoring
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+          
+    labels:
+      - "com.homelab.service=cadvisor"
+      - "com.homelab.category=monitoring"
+
+# Persistent volumes
+volumes:
+  prometheus-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/prometheus
+      
+  grafana-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/grafana
+      
+  alertmanager-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/alertmanager
+
+# Network configuration
+networks:
+  monitoring:
+    driver: bridge
+    
+  homelab:
+    external: true

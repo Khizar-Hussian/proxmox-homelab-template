@@ -1,0 +1,70 @@
+---
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                           VPN GATEWAY SERVICE CONFIG                        ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# 🎯 PURPOSE: Centralized VPN gateway for privacy-focused services
+# 🌐 FEATURES: WireGuard/OpenVPN support, kill switch, multi-provider support
+# 📊 MONITORING: VPN connection status, IP leak detection, bandwidth usage
+
+container:
+  id: 139
+  hostname: "vpn-gateway"
+  ip: "10.0.0.39"
+  
+  resources:
+    cpu: 1
+    memory: 256
+    disk: 5
+    
+  # VPN requires special network capabilities
+  features:
+    - "nesting=1"
+    
+  # No NFS mounts needed for VPN gateway
+  nfs_mounts: []
+
+# Certificate configuration (internal access only)
+certificates:
+  domains:
+    - "vpn.${DOMAIN}"
+    
+# External access configuration  
+external_access:
+  cloudflare_tunnel:
+    enabled: false  # VPN gateway should not be externally accessible
+    
+  # Internal access only
+  internal_access:
+    port: 8000
+    path: "/"
+    description: "VPN status and configuration"
+    
+# Service-specific configuration
+service:
+  type: "vpn"
+  category: "infrastructure"
+  priority: 1.5  # Deploy after DNS but before other services that need VPN
+  
+  # Health check configuration
+  health_check:
+    enabled: true
+    method: "custom"  # Custom VPN health check
+    script: "/scripts/vpn-health-check.sh"
+    interval: 30
+    
+  # Monitoring integration
+  monitoring:
+    enabled: true
+    metrics_port: 8001  # VPN metrics endpoint
+    dashboards:
+      - "vpn-overview"
+      - "vpn-performance"
+      
+# Backup configuration (minimal - just VPN configs)
+backup:
+  enabled: true
+  paths:
+    - "/config/vpn"           # VPN configuration files
+    - "/config/wireguard"     # WireGuard keys and configs
+  schedule: "weekly"

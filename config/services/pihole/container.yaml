@@ -1,0 +1,70 @@
+---
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                            PI-HOLE DNS SERVICE                              ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# 🎯 PURPOSE: Network-wide DNS and ad-blocking service
+# 🌐 FEATURES: DNS resolution, ad-blocking, local domain management
+# 📊 MONITORING: DNS query logs, blocked queries, top domains
+
+container:
+  id: 140
+  hostname: "pihole"
+  ip: "10.0.0.40"
+  
+  resources:
+    cpu: 1
+    memory: 512 # MB
+    disk: 8 # GB
+    
+  # DNS service needs special capabilities
+  features:
+    - "nesting=1"
+  
+  # No NFS mounts needed for Pi-hole
+  nfs_mounts: []
+
+# Certificate configuration
+certificates:
+  domains:
+    - "pihole.${DOMAIN}"
+    
+# External access configuration  
+external_access:
+  cloudflare_tunnel:
+    enabled: true
+    subdomain: "pihole"
+    
+  # Pi-hole admin interface
+  internal_access:
+    port: 80
+    path: "/admin"
+    
+# Service-specific configuration
+service:
+  type: "dns"
+  category: "infrastructure"
+  priority: 1  # Deploy first (other services need DNS)
+  
+  # Health check configuration
+  health_check:
+    enabled: true
+    endpoint: "/admin"
+    port: 80
+    interval: 30
+    
+  # Monitoring integration
+  monitoring:
+    enabled: true
+    metrics_port: 9617  # Pi-hole exporter port
+    dashboards:
+      - "pihole-overview"
+      - "dns-queries"
+      
+# Backup configuration
+backup:
+  enabled: true
+  paths:
+    - "/opt/pihole/etc-pihole"     # Pi-hole configuration
+    - "/opt/pihole/etc-dnsmasq.d"  # DNS configuration
+  schedule: "daily"

@@ -1,0 +1,77 @@
+version: '3.8'
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                        HOMEPAGE DASHBOARD & PORTAL                          ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# 🌐 Modern homelab dashboard with service tiles and system monitoring
+# 📝 Access: https://homepage.yourdomain.com or https://yourdomain.com
+# 🎨 Customizable: Edit config files to add services, widgets, and bookmarks
+
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    hostname: homepage.${DOMAIN:-homelab.local}
+    restart: unless-stopped
+    
+    ports:
+      - "3000:3000"    # Web interface
+      
+    environment:
+      # Basic configuration
+      TZ: ${TZ:-UTC}
+      PUID: 1000
+      PGID: 1000
+      
+      # Homepage configuration
+      HOMEPAGE_VAR_DOMAIN: ${DOMAIN:-homelab.local}
+      HOMEPAGE_VAR_CLUSTER_NAME: ${CLUSTER_NAME:-Homelab}
+      
+    volumes:
+      # Configuration files
+      - ./config:/app/config
+      
+      # Docker socket for container monitoring (read-only)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      
+      # System information access
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      
+      # Custom assets (icons, backgrounds)
+      - ./assets:/app/public/assets
+      
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+          
+    networks:
+      - homelab
+      
+    # Labels for monitoring and management
+    labels:
+      - "com.homelab.service=homepage"
+      - "com.homelab.category=interface"
+      - "com.homelab.priority=3"
+      - "traefik.enable=true"
+      - "traefik.http.routers.homepage.rule=Host(`homepage.${DOMAIN}`) || Host(`${DOMAIN}`)"
+      - "traefik.http.services.homepage.loadbalancer.server.port=3000"
+
+# Network configuration
+networks:
+  homelab:
+    external: true

@@ -1,0 +1,18 @@
+# This directory contains example service configurations for users to copy and modify.
+# Examples will be added in future releases.
+#
+# Planned examples:
+# - nextcloud/       # File sharing and collaboration
+# - jellyfin/        # Media server  
+# - vaultwarden/     # Password manager
+# - qbittorrent/     # Download client with VPN
+# - arr-stack/       # Sonarr, Radarr, Prowlarr
+# - home-assistant/  # Home automation
+# - photoprism/      # Photo management
+# - uptime-kuma/     # Uptime monitoring
+#
+# To add your own service:
+# 1. Create directory: config/services/your-service/
+# 2. Add container.yaml (LXC container config)  
+# 3. Add docker-compose.yml (service definition)
+# 4. Deploy: git add + commit + push (GitOps) or ./scripts/deploy.sh --services-only

@@ -1,0 +1,282 @@
+version: '3.8'
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                   NGINX PROXY MANAGER WITH LET'S ENCRYPT                    ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# 🌐 Reverse proxy with automated SSL certificate generation and management
+# 🔒 Full Let's Encrypt integration with Cloudflare DNS challenge
+# 🤖 Automatic proxy host creation and SSL configuration
+
+services:
+  # Nginx Proxy Manager - Main reverse proxy
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    hostname: proxy.${DOMAIN:-homelab.local}
+    restart: unless-stopped
+    
+    ports:
+      - "80:80"       # HTTP proxy
+      - "443:443"     # HTTPS proxy  
+      - "81:81"       # Admin interface
+      
+    environment:
+      # Database configuration
+      DB_MYSQL_HOST: "db"
+      DB_MYSQL_PORT: 3306
+      DB_MYSQL_USER: "npm"
+      DB_MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      DB_MYSQL_NAME: "npm"
+      
+      # Let's Encrypt configuration
+      LETSENCRYPT_EMAIL: ${ADMIN_EMAIL}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+      
+      # Disable IPv6 if not needed
+      DISABLE_IPV6: 'true'
+      
+    volumes:
+      # Persistent data and SSL certificates
+      - npm-data:/data
+      - npm-letsencrypt:/etc/letsencrypt
+      
+      # Custom configurations
+      - ./config/nginx.conf:/etc/nginx/conf.d/custom.conf:ro
+      - ./config/ssl-params.conf:/etc/nginx/snippets/ssl-params.conf:ro
+      
+      # Certificate automation scripts
+      - ./scripts:/scripts:ro
+      
+    depends_on:
+      - db
+      - certbot-automation
+      
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:81/api"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+          
+    networks:
+      - homelab
+      - npm-internal
+      
+    # Labels for monitoring and management
+    labels:
+      - "com.homelab.service=nginx-proxy-manager"
+      - "com.homelab.category=infrastructure"
+      - "com.homelab.priority=2"
+
+  # Certbot with Cloudflare DNS plugin for automated certificate generation
+  certbot-automation:
+    image: certbot/dns-cloudflare:latest
+    container_name: certbot-automation
+    restart: unless-stopped
+    
+    environment:
+      # Cloudflare API configuration
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+      
+      # Let's Encrypt configuration
+      CERTBOT_EMAIL: ${ADMIN_EMAIL}
+      CERTBOT_DOMAIN: ${DOMAIN}
+      CERTBOT_STAGING: ${LETSENCRYPT_STAGING:-false}
+      
+    volumes:
+      # Shared certificate storage
+      - npm-letsencrypt:/etc/letsencrypt
+      - certbot-work:/var/lib/letsencrypt
+      - certbot-logs:/var/log/letsencrypt
+      
+      # Cloudflare credentials
+      - ./config/cloudflare.ini:/etc/cloudflare/cloudflare.ini:ro
+      
+      # Automation scripts
+      - ./scripts/certbot-automation.sh:/scripts/certbot-automation.sh:ro
+      
+    # Run certificate automation on startup and renewal schedule
+    command: >
+      sh -c "
+        # Initial certificate generation
+        /scripts/certbot-automation.sh initial &&
+        
+        # Set up automatic renewal (check twice daily)
+        echo '0 */12 * * * /scripts/certbot-automation.sh renew' | crontab - &&
+        
+        # Keep container running
+        crond -f
+      "
+      
+    networks:
+      - npm-internal
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+          
+    labels:
+      - "com.homelab.service=certbot-automation"
+      - "com.homelab.category=certificates"
+
+  # MySQL database for NPM
+  db:
+    image: mariadb:10.11
+    container_name: nginx-proxy-db
+    restart: unless-stopped
+    
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: npm
+      MYSQL_USER: npm
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      
+    volumes:
+      - npm-mysql:/var/lib/mysql
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+          
+    networks:
+      - npm-internal
+      
+    # Health check
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+      
+    labels:
+      - "com.homelab.service=nginx-proxy-db"
+      - "com.homelab.category=database"
+
+  # Nginx metrics exporter for Prometheus
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nginx-exporter
+    restart: unless-stopped
+    
+    command:
+      - -nginx.scrape-uri=http://nginx-proxy-manager:81/nginx_status
+      
+    ports:
+      - "9113:9113"   # Metrics endpoint
+      
+    depends_on:
+      - nginx-proxy-manager
+      
+    networks:
+      - npm-internal
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+        reservations:
+          memory: 16M
+          
+    labels:
+      - "com.homelab.service=nginx-exporter"
+      - "com.homelab.category=monitoring"
+
+  # NPM API automation for proxy host creation
+  npm-automation:
+    image: alpine:latest
+    container_name: npm-automation
+    restart: "no"  # Run once then exit
+    
+    environment:
+      NPM_HOST: "nginx-proxy-manager"
+      NPM_PORT: "81"
+      DOMAIN: ${DOMAIN}
+      
+    volumes:
+      - ./scripts/npm-automation.sh:/scripts/npm-automation.sh:ro
+      - npm-automation-state:/state
+      
+    # Wait for NPM to be ready, then create proxy hosts
+    command: >
+      sh -c "
+        apk add --no-cache curl jq &&
+        /scripts/npm-automation.sh
+      "
+      
+    depends_on:
+      - nginx-proxy-manager
+      - certbot-automation
+      
+    networks:
+      - npm-internal
+      
+    labels:
+      - "com.homelab.service=npm-automation"
+      - "com.homelab.category=automation"
+
+# Persistent volumes
+volumes:
+  npm-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/npm/data
+      
+  npm-letsencrypt:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/npm/letsencrypt
+      
+  npm-mysql:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/npm/mysql
+      
+  certbot-work:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/certbot/work
+      
+  certbot-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/certbot/logs
+      
+  npm-automation-state:
+    driver: local
+
+# Network configuration
+networks:
+  homelab:
+    external: true
+    
+  npm-internal:
+    driver: bridge
+    internal: false

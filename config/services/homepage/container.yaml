@@ -1,0 +1,71 @@
+---
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         HOMEPAGE DASHBOARD SERVICE                          ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# 🎯 PURPOSE: Beautiful homelab service dashboard and homepage
+# 🌐 FEATURES: Service tiles, system stats, weather, bookmarks, quick links
+# 📊 MONITORING: Service status, system resources, container metrics
+
+container:
+  id: 144
+  hostname: "homepage"
+  ip: "10.0.0.44"
+  
+  resources:
+    cpu: 1
+    memory: 512
+    disk: 8
+    
+  # Docker socket access for container monitoring
+  features:
+    - "nesting=1"
+  
+  # No NFS mounts needed (configuration stored locally)
+  nfs_mounts: []
+
+# Certificate configuration
+certificates:
+  domains:
+    - "homepage.${DOMAIN}"
+    - "${DOMAIN}"  # Make it the main homepage too
+    
+# External access configuration  
+external_access:
+  cloudflare_tunnel:
+    enabled: true
+    subdomain: "homepage"
+    
+  # Also serve as main domain homepage
+  main_domain: true
+  
+  internal_access:
+    port: 3000
+    path: "/"
+    
+# Service-specific configuration
+service:
+  type: "dashboard"
+  category: "interface"
+  priority: 3  # Deploy after DNS and proxy
+  
+  # Health check configuration
+  health_check:
+    enabled: true
+    endpoint: "/"
+    port: 3000
+    interval: 30
+    
+  # Monitoring integration
+  monitoring:
+    enabled: true
+    metrics_port: 3001  # Homepage metrics endpoint
+    dashboards:
+      - "homepage-overview"
+      
+# Backup configuration
+backup:
+  enabled: true
+  paths:
+    - "/opt/homepage/config"  # Homepage configuration
+  schedule: "weekly"

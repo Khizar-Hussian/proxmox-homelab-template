@@ -6,6 +6,17 @@
 # 🏠 Welcome! This file configures your entire homelab infrastructure.
 # 📝 Copy this file to cluster.yaml and customize for your environment.
 # 🔒 SECURITY: Never commit cluster.yaml to Git (it contains your real settings)
+#
+# 📖 Quick Start:
+#   1. Set your domain name and email below
+#   2. Configure your Proxmox and TrueNAS IP addresses  
+#   3. Set timezone and basic network settings
+#   4. Advanced settings can be left as defaults initially
+#
+# 💡 Legend:
+#   ⚠️  = Required (must be configured)
+#   🔧 = Recommended (should configure for best experience)
+#   💡 = Optional (can leave as default)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🏠 BASIC CLUSTER SETTINGS
@@ -16,57 +27,18 @@ cluster:
   name: &cluster_name "homelab"
   
   # ⚠️ Your domain name (can be from any registrar, just needs Cloudflare DNS)
+  # Examples: mydomain.com, homelab.dev, myname.net
   domain: &domain "yourdomain.com"
   
   # 🔧 Internal domain (usually same as above for simplicity)  
   internal_domain: *domain
   
   # ⚠️ Your timezone (used for backups, logs, monitoring)
+  # Find yours: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
   timezone: "America/New_York"
   
   # ⚠️ Admin email (used for SSL certificates and alerts)
   admin_email: "admin@yourdomain.com"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 🚀 SERVICE DEPLOYMENT CONFIGURATION
-# ══════════════════════════════════════════════════════════════════════════════
-
-services:
-  # Core services that are automatically deployed
-  auto_deploy:
-    - "pihole"        # DNS and ad-blocking
-    - "vpn-gateway"   # VPN for privacy and security
-    - "nginx-proxy"   # Reverse proxy with SSL
-    - "homepage"      # Service dashboard  
-    - "monitoring"    # Prometheus + Grafana
-    - "authentik"     # SSO authentication
-    
-  # Deployment order (ensures dependencies are met)
-  deploy_order:
-    - "pihole"        # DNS first (other services need DNS resolution)
-    - "vpn-gateway"   # VPN second (download services need VPN)
-    - "nginx-proxy"   # Proxy third (provides SSL termination)
-    - "homepage"      # Dashboard fourth (shows system status)
-    - "monitoring"    # Monitoring fifth (monitors other services)
-    - "authentik"     # Authentication last (protects other services)
-    
-  # Service configuration defaults
-  defaults:
-    # Auto-generate secure passwords for all services
-    auto_generate_passwords: true
-    
-    # Enable monitoring for all services by default
-    enable_monitoring: true
-    
-    # Enable backups for all services by default
-    enable_backups: true
-    
-    # Default health check settings
-    health_check:
-      enabled: true
-      interval: 30
-      timeout: 10
-      retries: 3
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🖥️ PROXMOX SERVER SETTINGS  
@@ -102,13 +74,32 @@ networks:
     subnet: "10.0.0.0/24"        # Container network (isolated from your home)
     gateway: "10.0.0.1"          # Container gateway
     
-    # 💡 Service IP allocation strategy:
-    # Core services:        10.0.0.40-49
-    # Download services:    10.0.0.10-19  
-    # Productivity services: 10.0.0.60-69
-    # User services:        10.0.0.70+
-    # 
-    # Individual service IPs are now defined in config/services/*/container.yaml
+    # 💡 Why 10.0.0.0/24 instead of 192.168.x.x?
+    # - Security: Isolates containers from your personal devices
+    # - VPN safety: Download services can't access your main network  
+    # - No conflicts: Won't interfere with existing devices
+    # - Professional: Industry standard practice
+    
+  # Reserved IP addresses for core services
+  core_services:
+    pihole: "10.0.0.40"          # DNS and ad-blocking
+    nginx_proxy: "10.0.0.41"     # Reverse proxy with SSL
+    monitoring: "10.0.0.42"      # Grafana and Prometheus
+    authentik: "10.0.0.43"       # Authentication and SSO
+    
+  # VPN and download services  
+  download_services:
+    vpn_gateway: "10.0.0.10"     # VPN connection
+    qbittorrent: "10.0.0.11"     # Download client (for Linux ISOs, etc.)
+    
+  # Productivity and self-hosted services
+  productivity_services:
+    nextcloud: "10.0.0.60"       # File sharing and collaboration
+    vaultwarden: "10.0.0.61"     # Password manager
+    jellyfin: "10.0.0.62"        # Media server (home videos, photos)
+    
+  # 💡 User services automatically start from 10.0.0.70
+  # Add your own services in config/services/ directory
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 💾 STORAGE SETTINGS
@@ -170,31 +161,26 @@ authentication:
         - "totp"                # Time-based OTP (Google Authenticator, etc.)
         - "static"              # Recovery codes
         # - "webauthn"          # Hardware keys (YubiKey, etc.)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 🔒 CERTIFICATES AND SSL
-# ══════════════════════════════════════════════════════════════════════════════
-
-certificates:
-  # SSL certificate provider
-  provider: "letsencrypt"          # Full Let's Encrypt automation
+    
+    # Session settings
+    session:
+      lifetime: "12h"           # How long users stay logged in
+      remember_me: true         # Allow "remember me" option
+    
+    # 📘 HOW AUTHENTIK SSO WORKS:
+    # 1. User visits protected service (e.g., grafana.yourdomain.com)
+    # 2. Nginx proxy redirects to auth.yourdomain.com for login
+    # 3. User authenticates with Authentik (username/password + MFA)
+    # 4. Authentik generates session token and redirects back to service
+    # 5. User has seamless access to all protected services
+    # 6. Single logout logs out of all services
+  # How to handle SSL certificates
+  type: "internal"              # "internal" = self-signed CA, "letsencrypt" = public certs
   
-  # Let's Encrypt configuration
+  # 🔧 Let's Encrypt settings (if type: "letsencrypt")
   letsencrypt:
-    email: "admin@yourdomain.com"  # Email for certificate notifications
-    dns_provider: "cloudflare"     # DNS challenge provider
-    staging: false                 # Set to true for testing
-    
-    # Automatic wildcard certificate
-    domains:
-      - "yourdomain.com"
-      - "*.yourdomain.com"
-    
-    # Auto-renewal settings
-    renewal:
-      enabled: true
-      days_before_expiry: 30       # Renew 30 days before expiry
-      check_interval: "twice_daily" # Check for renewal twice per day
+    email: "admin@yourdomain.com"
+    dns_provider: "cloudflare"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🌍 EXTERNAL ACCESS  
@@ -202,23 +188,82 @@ certificates:
 
 external_access:
   # Cloudflare tunnels for secure external access
+  # ⚠️ NOTE: Video streaming (Jellyfin) violates Cloudflare TOS
   cloudflare:
     enabled: true               # 🔧 Enable to access services from anywhere
     tunnel_name: "homelab-tunnel"
     
     # Which services to expose publicly (no authentication required)
     public_services:
-      - "homepage"              # Service dashboard (with auth)
+      - "nextcloud"             # File sharing (has own auth)
       - "authentik"             # Authentication service (public login page)
       
     # Which services need Authentik SSO authentication
+    # 📘 AUTHENTICATION: Authentik provides self-hosted SSO with OIDC/SAML
+    # Users login through Authentik, then get automatic access to these services
     protected_services:
-      - "grafana"               # Monitoring dashboards
+      - "qbittorrent"           # Download client
+      - "vaultwarden"           # Password manager  
+      - "grafana"               # Monitoring
       - "nginx-proxy"           # Proxy manager (admin interface)
       
     # Which services stay internal only
     private_services:
-      - "pihole"                # DNS server (internal only)
+      - "pihole"                # DNS server
+      - "jellyfin"              # Media server (use VPS proxy or Tailscale instead)
+  
+  # VPS proxy for bandwidth-intensive services (recommended for Jellyfin)
+  vps_proxy:
+    enabled: false              # 🔧 Enable if you have a VPS for media streaming
+    host: "your-vps-ip"
+    services:
+      - "jellyfin"              # Media server (TOS-compliant alternative)
+  
+  # 🔧 VPS + Tailscale setup (recommended for media streaming)
+  # This creates a secure mesh network between your homelab and VPS
+  tailscale_vps:
+    enabled: false              # 💡 Enable for TOS-compliant media streaming
+    
+    # VPS configuration
+    vps:
+      provider: "digitalocean"   # digitalocean, linode, vultr, etc.
+      region: "nyc1"            # Choose region close to you
+      size: "s-1vcpu-1gb"       # Small VPS sufficient for proxy
+      
+    # Services to proxy through VPS
+    proxied_services:
+      - service: "jellyfin"
+        external_port: 443       # HTTPS on VPS
+        internal_port: 8096      # Jellyfin port on homelab
+        domain: "jellyfin.yourdomain.com"
+        
+      # Add more bandwidth-intensive services here
+      # - service: "plex"
+      #   external_port: 443
+      #   internal_port: 32400
+      #   domain: "plex.yourdomain.com"
+    
+    # Tailscale configuration
+    tailscale:
+      # Both homelab and VPS join same tailnet
+      tailnet: "your-tailnet-name"
+      # Auth keys generated from Tailscale admin console
+      auth_key_homelab: "${TAILSCALE_AUTH_KEY_HOMELAB}"
+      auth_key_vps: "${TAILSCALE_AUTH_KEY_VPS}"
+      
+    # 📘 HOW IT WORKS:
+    # 1. VPS and homelab both connect to Tailscale mesh network
+    # 2. VPS runs nginx proxy with SSL certificates
+    # 3. External users connect to VPS (jellyfin.yourdomain.com)
+    # 4. VPS forwards requests to homelab over Tailscale (encrypted)
+    # 5. No Cloudflare TOS violations, secure tunnel, great performance
+    
+  # Alternative: Direct VPN access for advanced users
+  direct_vpn:
+    enabled: false              # 💡 Enable for direct network access
+    provider: "wireguard"       # wireguard, openvpn
+    port: 51820                 # VPN port to expose
+    # Users install VPN client and connect directly to your network
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🔒 VPN CONFIGURATION
@@ -308,18 +353,6 @@ security:
 #   2. Set GitHub Secrets (see README.md for complete setup guide)
 #   3. Run: ./scripts/deploy.sh (or use GitOps by pushing to main branch)
 #
-# 🏗️ SERVICE ARCHITECTURE:
-#   Core services are automatically deployed from config/services/ directory:
-#   • Pi-hole (DNS + ad-blocking) 
-#   • Nginx Proxy Manager (reverse proxy + SSL)
-#   • Homepage (service dashboard)
-#   • Monitoring (Prometheus + Grafana)
-#   • Authentik (SSO authentication)
-#
-#   Add your own services by creating config/services/service-name/ with:
-#   • container.yaml (LXC container configuration)
-#   • docker-compose.yml (service definition)
-#
 # 🔒 REQUIRED GITHUB SECRETS (set in GitHub repository settings):
 #   PROXMOX_TOKEN            = API token from Proxmox
 #   CLOUDFLARE_API_TOKEN     = API token from Cloudflare  
@@ -334,3 +367,14 @@ security:
 #   GOOGLE_CLIENT_SECRET     = For Google SSO in Authentik
 #   GITHUB_CLIENT_ID         = For GitHub SSO in Authentik
 #   GITHUB_CLIENT_SECRET     = For GitHub SSO in Authentik
+#
+# 📘 HOW ENVIRONMENT VARIABLES WORK:
+#   1. You set secrets in GitHub repository settings
+#   2. GitHub Actions automatically creates .env files during deployment
+#   3. No manual .env file editing required!
+#
+# 📚 DOCUMENTATION (coming soon):
+#   - Installation: docs/installation.md
+#   - Service management: docs/services.md  
+#   - Troubleshooting: docs/troubleshooting.md
+#   - GitOps workflow: docs/gitops.md

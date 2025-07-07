@@ -36,7 +36,7 @@ source "$HELPERS_DIR/validation.sh"      # Configuration validation
 source "$HELPERS_DIR/prerequisites.sh"   # System prerequisites
 source "$HELPERS_DIR/networking.sh"      # Network setup
 source "$HELPERS_DIR/containers.sh"      # LXC container management
-source "$HELPERS_DIR/services.sh"        # Service deployment
+source "$HELPERS_DIR/services.sh"        # Service deployment (now handles ALL services)
 source "$HELPERS_DIR/monitoring.sh"      # Monitoring setup
 source "$HELPERS_DIR/dns.sh"             # DNS configuration
 source "$HELPERS_DIR/notifications.sh"   # Notification system
@@ -157,14 +157,14 @@ main() {
     if [[ "$SERVICES_ONLY" == "false" ]]; then
         log "STEP" "Phase 2: Infrastructure Setup"
         setup_networking || exit 1
-        deploy_core_infrastructure || exit 1
+        # Note: Core services now deployed via services.sh, not separate infrastructure
     else
         log "INFO" "Skipping infrastructure setup (services-only mode)"
     fi
     
-    # Phase 3: Service Deployment
+    # Phase 3: Service Deployment (now handles both core + user services)
     log "STEP" "Phase 3: Service Deployment"
-    deploy_user_services || exit 1
+    deploy_all_services || exit 1
     
     # Phase 4: Post-Deployment Configuration
     log "STEP" "Phase 4: Post-Deployment Configuration"

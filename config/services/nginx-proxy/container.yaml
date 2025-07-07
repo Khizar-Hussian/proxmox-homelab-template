@@ -1,0 +1,70 @@
+---
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                        NGINX PROXY MANAGER SERVICE                          ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# 🎯 PURPOSE: Reverse proxy with SSL termination and management GUI
+# 🌐 FEATURES: SSL certificates, proxy hosts, access lists, streaming
+# 📊 MONITORING: Proxy performance, SSL certificate expiry, request metrics
+
+container:
+  id: 141
+  hostname: "nginx-proxy"
+  ip: "10.0.0.41"
+  
+  resources:
+    cpu: 1
+    memory: 512
+    disk: 10
+    
+  # No special features needed
+  features:
+    - "nesting=1"
+  
+  # No NFS mounts needed (stores data locally)
+  nfs_mounts: []
+
+# Certificate configuration
+certificates:
+  domains:
+    - "proxy.${DOMAIN}"
+    
+# External access configuration  
+external_access:
+  cloudflare_tunnel:
+    enabled: true
+    subdomain: "proxy"
+    
+  # Admin interface on port 81
+  internal_access:
+    port: 81
+    path: "/"
+    
+# Service-specific configuration
+service:
+  type: "proxy"
+  category: "infrastructure"
+  priority: 2  # Deploy after DNS
+  
+  # Health check configuration
+  health_check:
+    enabled: true
+    endpoint: "/"
+    port: 81
+    interval: 30
+    
+  # Monitoring integration
+  monitoring:
+    enabled: true
+    metrics_port: 9113  # Nginx exporter port
+    dashboards:
+      - "nginx-overview"
+      - "ssl-certificates"
+      
+# Backup configuration
+backup:
+  enabled: true
+  paths:
+    - "/opt/nginx-proxy/data"          # NPM configuration
+    - "/opt/nginx-proxy/letsencrypt"   # SSL certificates
+  schedule: "daily"

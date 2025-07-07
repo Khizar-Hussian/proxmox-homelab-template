@@ -10,51 +10,22 @@
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # Deploy core infrastructure containers
+# NOTE: This function is deprecated - core services now deployed via services.sh
 deploy_core_infrastructure() {
-    log "STEP" "Deploying core infrastructure containers..."
-    
-    local core_services=("pihole" "nginx-proxy" "monitoring" "authentik")
-    
-    for service in "${core_services[@]}"; do
-        deploy_core_service "$service" || return 1
-    done
-    
-    log "SUCCESS" "Core infrastructure deployment completed"
+    log "WARN" "deploy_core_infrastructure() is deprecated"
+    log "INFO" "Core services are now deployed via services.sh using YAML configurations"
+    log "INFO" "This ensures consistency between core and user services"
+    return 0
 }
 
+# NOTE: Core service deployment functions are deprecated
+# Core services (pihole, nginx-proxy, monitoring, authentik) are now
+# deployed via services.sh using YAML configurations in config/services/
+# This ensures consistency and transparency between core and user services
+
 deploy_core_service() {
-    local service_name="$1"
-    
-    log "INFO" "Deploying core service: $service_name"
-    
-    # Get service configuration
-    local service_key="${service_name//-/_}"
-    local service_ip=$(get_config ".networks.core_services.$service_key")
-    
-    if [[ "$service_ip" == "null" ]]; then
-        log "ERROR" "No IP configured for service: $service_name"
-        return 1
-    fi
-    
-    # Generate container ID from IP (e.g., 10.0.0.40 -> 140)
-    local container_id="1${service_ip##*.}"
-    
-    # Check if container exists
-    if container_exists "$container_id"; then
-        if [[ "$FORCE_DEPLOY" == "true" ]]; then
-            log "WARN" "Destroying existing container $container_id for redeploy"
-            destroy_container "$container_id"
-        else
-            log "INFO" "Container $container_id already exists, skipping"
-            return 0
-        fi
-    fi
-    
-    # Create and configure container
-    create_container "$service_name" "$container_id" "$service_ip" || return 1
-    setup_docker_in_container "$container_id" || return 1
-    
-    log "SUCCESS" "Core service $service_name deployed"
+    log "WARN" "deploy_core_service() is deprecated - use services.sh instead"
+    return 0
 }
 
 create_container() {

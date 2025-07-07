@@ -1,0 +1,141 @@
+version: '3.8'
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         PI-HOLE DNS & AD-BLOCKING                           ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# 🌐 Network-wide DNS and ad-blocking service
+# 📝 Access: http://pihole.yourdomain.com/admin
+# 🔑 Default password: Generated automatically and logged during deployment
+
+services:
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    hostname: pihole.${DOMAIN:-homelab.local}
+    restart: unless-stopped
+    
+    ports:
+      - "53:53/tcp"      # DNS TCP
+      - "53:53/udp"      # DNS UDP  
+      - "80:80/tcp"      # Web interface
+      
+    environment:
+      # Timezone configuration
+      TZ: ${TZ:-UTC}
+      
+      # Pi-hole configuration
+      WEBPASSWORD: ${PIHOLE_PASSWORD}
+      PIHOLE_DNS_: '1.1.1.1;8.8.8.8'  # Upstream DNS servers
+      DNSMASQ_LISTENING: 'all'
+      
+      # Web interface configuration
+      VIRTUAL_HOST: pihole.${DOMAIN:-homelab.local}
+      PROXY_LOCATION: pihole
+      FTLCONF_LOCAL_IPV4: ${CONTAINER_IP:-10.0.0.40}
+      
+      # Privacy settings
+      PIHOLE_UID: 1000
+      PIHOLE_GID: 1000
+      
+    volumes:
+      # Pi-hole configuration and data
+      - pihole-config:/etc/pihole
+      - pihole-dnsmasq:/etc/dnsmasq.d
+      
+      # Custom configurations
+      - ./custom-blocklists.txt:/etc/pihole/custom-blocklists.txt:ro
+      - ./custom-whitelist.txt:/etc/pihole/custom-whitelist.txt:ro
+      
+    # Required capabilities for DNS service
+    cap_add:
+      - NET_ADMIN
+      
+    # DNS configuration
+    dns:
+      - 127.0.0.1      # Use itself for DNS
+      - 1.1.1.1        # Fallback DNS
+      
+    # Health check
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "pi.hole", "+short"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+          
+    # Network configuration
+    networks:
+      - homelab
+      
+    # Labels for monitoring and management
+    labels:
+      - "com.homelab.service=pihole"
+      - "com.homelab.category=infrastructure" 
+      - "com.homelab.priority=1"
+      - "traefik.enable=true"
+      - "traefik.http.routers.pihole.rule=Host(`pihole.${DOMAIN}`)"
+      - "traefik.http.services.pihole.loadbalancer.server.port=80"
+
+  # Pi-hole metrics exporter for Prometheus
+  pihole-exporter:
+    image: ekofr/pihole-exporter:latest
+    container_name: pihole-exporter
+    restart: unless-stopped
+    
+    environment:
+      PIHOLE_HOSTNAME: pihole
+      PIHOLE_PORT: 80
+      PIHOLE_PASSWORD: ${PIHOLE_PASSWORD}
+      INTERVAL: 30s
+      PORT: 9617
+      
+    ports:
+      - "9617:9617"     # Metrics endpoint
+      
+    depends_on:
+      - pihole
+      
+    networks:
+      - homelab
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 32M
+          
+    labels:
+      - "com.homelab.service=pihole-exporter"
+      - "com.homelab.category=monitoring"
+
+# Persistent volumes
+volumes:
+  pihole-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/pihole/config
+      
+  pihole-dnsmasq:
+    driver: local  
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/pihole/dnsmasq
+
+# Network configuration
+networks:
+  homelab:
+    external: true

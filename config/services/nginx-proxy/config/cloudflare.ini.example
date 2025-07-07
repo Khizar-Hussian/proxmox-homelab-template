@@ -1,0 +1,10 @@
+# Cloudflare API credentials for Let's Encrypt DNS challenge
+# This file will be auto-generated during deployment from environment variables
+# DO NOT COMMIT THIS FILE TO GIT
+
+# API Token (recommended - more secure)
+dns_cloudflare_api_token = YOUR_CLOUDFLARE_API_TOKEN_HERE
+
+# Alternative: Global API Key (less secure)
+# dns_cloudflare_email = your-email@example.com
+# dns_cloudflare_api_key = your_global_api_key_here

@@ -1,0 +1,174 @@
+version: '3.8'
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         VPN GATEWAY & PRIVACY TUNNEL                        ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# 🔒 Centralized VPN gateway for routing privacy-sensitive services
+# 🌐 Supports multiple VPN providers (NordVPN, Surfshark, ExpressVPN, etc.)
+# 🛡️ Built-in kill switch and DNS leak protection
+
+services:
+  # Gluetun VPN Client - Multi-provider VPN gateway
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: vpn-gateway
+    hostname: vpn.${DOMAIN:-homelab.local}
+    restart: unless-stopped
+    
+    # Required capabilities for VPN functionality
+    cap_add:
+      - NET_ADMIN
+      
+    # Devices for VPN interface
+    devices:
+      - /dev/net/tun:/dev/net/tun
+      
+    ports:
+      # VPN management interface
+      - "8000:8000"     # Gluetun control server
+      
+      # Ports for services using this VPN (add as needed)
+      - "8080:8080"     # qBittorrent web UI
+      - "8989:8989"     # Sonarr web UI (if using VPN)
+      - "9696:9696"     # Prowlarr web UI (if using VPN)
+      - "7878:7878"     # Radarr web UI (if using VPN)
+      - "8686:8686"     # Lidarr web UI (if using VPN)
+      
+    environment:
+      # VPN Provider Configuration
+      VPN_SERVICE_PROVIDER: ${VPN_PROVIDER:-nordvpn}
+      VPN_TYPE: ${VPN_TYPE:-wireguard}
+      
+      # NordVPN Configuration
+      WIREGUARD_PRIVATE_KEY: ${NORDVPN_PRIVATE_KEY:-}
+      NORDVPN_CATEGORY: ${NORDVPN_CATEGORY:-legacy_p2p}
+      SERVER_COUNTRIES: ${VPN_COUNTRIES:-Netherlands,Switzerland}
+      
+      # Surfshark Configuration (alternative)
+      SURFSHARK_USER: ${SURFSHARK_USER:-}
+      SURFSHARK_PASSWORD: ${SURFSHARK_PASSWORD:-}
+      
+      # ExpressVPN Configuration (alternative)
+      EXPRESSVPN_USER: ${EXPRESSVPN_USER:-}
+      EXPRESSVPN_PASSWORD: ${EXPRESSVPN_PASSWORD:-}
+      
+      # OpenVPN Configuration (fallback)
+      OPENVPN_USER: ${VPN_USERNAME:-}
+      OPENVPN_PASSWORD: ${VPN_PASSWORD:-}
+      
+      # Security Configuration
+      FIREWALL: on
+      FIREWALL_OUTBOUND_SUBNETS: 10.0.0.0/24,192.168.1.0/24  # Allow local networks
+      FIREWALL_VPN_INPUT_PORTS: 8080,8989,9696,7878,8686      # Allowed incoming ports
+      
+      # DNS Configuration (prevent DNS leaks)
+      DOT: off                    # Disable DNS over TLS (conflicts with Pi-hole)
+      DNS_KEEP_NAMESERVER: off    # Don't keep system DNS
+      DNS_ADDRESS: 10.0.0.40      # Use Pi-hole for DNS
+      
+      # Health Check Configuration
+      HEALTH_VPN_DURATION_INITIAL: 60s
+      HEALTH_VPN_DURATION_ADDITION: 5s
+      
+      # Logging
+      LOG_LEVEL: info
+      
+      # Timezone
+      TZ: ${TZ:-UTC}
+      
+    volumes:
+      # VPN configuration storage
+      - vpn-config:/gluetun
+      
+      # Custom VPN configurations (optional)
+      - ./config:/config:ro
+      
+    # DNS configuration (use Pi-hole)
+    dns:
+      - 10.0.0.40      # Pi-hole DNS
+      - 1.1.1.1        # Fallback DNS
+      
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/v1/openvpn/status"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+          
+    networks:
+      - homelab
+      
+    # Labels for monitoring and management
+    labels:
+      - "com.homelab.service=vpn-gateway"
+      - "com.homelab.category=infrastructure"
+      - "com.homelab.priority=1.5"
+
+  # VPN monitoring and metrics
+  vpn-monitor:
+    image: linuxserver/code-server:latest
+    container_name: vpn-monitor
+    restart: unless-stopped
+    
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-UTC}
+      - PASSWORD=${VPN_MONITOR_PASSWORD:-vpnmonitor}
+      - SUDO_PASSWORD=${VPN_MONITOR_PASSWORD:-vpnmonitor}
+      
+    volumes:
+      - vpn-monitor-config:/config
+      - ./scripts:/scripts:ro
+      
+    ports:
+      - "8001:8443"    # VPN monitoring interface
+      
+    depends_on:
+      - gluetun
+      
+    networks:
+      - homelab
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+          
+    labels:
+      - "com.homelab.service=vpn-monitor"
+      - "com.homelab.category=monitoring"
+
+# Persistent volumes
+volumes:
+  vpn-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/vpn-config
+      
+  vpn-monitor-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/vpn-monitor
+
+# Network configuration
+networks:
+  homelab:
+    external: true
