@@ -127,6 +127,206 @@ test_network_connectivity() {
     log "SUCCESS" "Network connectivity test passed"
 }
 
+# Configure external access via Cloudflare tunnels
+setup_external_access() {
+    local cloudflare_enabled=$(get_config ".external_access.cloudflare.enabled" "false")
+    
+    if [[ "$cloudflare_enabled" != "true" ]]; then
+        log "INFO" "Cloudflare tunnels not enabled, skipping external access setup"
+        return 0
+    fi
+    
+    log "INFO" "Setting up Cloudflare tunnels for external access..."
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Install cloudflared if not present
+        if ! command_exists cloudflared; then
+            install_cloudflared || return 1
+        fi
+        
+        # Configure tunnel
+        configure_cloudflare_tunnel || return 1
+        
+        log "SUCCESS" "External access configured"
+    else
+        log "INFO" "[DRY RUN] Would setup Cloudflare tunnels"
+    fi
+}
+
+# Install cloudflared
+install_cloudflared() {
+    log "INFO" "Installing cloudflared..."
+    
+    # Download and install cloudflared
+    curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+    dpkg -i cloudflared.deb
+    rm cloudflared.deb
+    
+    log "SUCCESS" "cloudflared installed"
+}
+
+# Configure Cloudflare tunnel
+configure_cloudflare_tunnel() {
+    local tunnel_name=$(get_config ".external_access.cloudflare.tunnel_name" "homelab-tunnel")
+    local domain=$(get_config ".cluster.domain")
+    
+    log "INFO" "Configuring Cloudflare tunnel: $tunnel_name"
+    
+    # Create tunnel configuration
+    mkdir -p /etc/cloudflared
+    
+    cat > /etc/cloudflared/config.yml << EOF
+tunnel: $tunnel_name
+credentials-file: /etc/cloudflared/tunnel.json
+
+ingress:
+  - hostname: $domain
+    service: http://$(get_config ".networks.containers.gateway"):80
+  - hostname: "*.${domain}"
+    service: http://$(get_config ".networks.containers.gateway"):80
+  - service: http_status:404
+EOF
+    
+    log "SUCCESS" "Cloudflare tunnel configuration created"
+}
+
+# Setup network monitoring
+setup_network_monitoring() {
+    log "INFO" "Setting up network monitoring..."
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Install network monitoring tools
+        apt update
+        apt install -y iftop nethogs nload
+        
+        # Create network monitoring script
+        cat > /usr/local/bin/network-monitor << 'EOF'
+#!/bin/bash
+# Simple network monitoring for homelab
+
+echo "=== Network Interface Status ==="
+ip addr show | grep -E "^[0-9]+:|inet "
+
+echo -e "\n=== Bridge Status ==="
+brctl show 2>/dev/null || echo "brctl not available"
+
+echo -e "\n=== Container Network Status ==="
+for bridge in vmbr0 vmbr1; do
+    if ip link show "$bridge" &>/dev/null; then
+        echo "$bridge: $(ip addr show "$bridge" | grep -o 'inet [^/]*' | cut -d' ' -f2)"
+    fi
+done
+
+echo -e "\n=== Network Connections ==="
+ss -tuln | head -20
+EOF
+        
+        chmod +x /usr/local/bin/network-monitor
+        
+        log "SUCCESS" "Network monitoring tools installed"
+    else
+        log "INFO" "[DRY RUN] Would setup network monitoring"
+    fi
+}
+
+# Reset networking to defaults
+reset_networking() {
+    local bridge=$(get_config ".networks.containers.bridge" "vmbr1")
+    
+    log "WARN" "Resetting network configuration..."
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Remove bridge
+        if ip link show "$bridge" &>/dev/null; then
+            ifdown "$bridge" 2>/dev/null || true
+            ip link delete "$bridge" 2>/dev/null || true
+        fi
+        
+        # Remove from interfaces file
+        sed -i "/# Container network bridge for homelab/,/^$/d" /etc/network/interfaces
+        
+        # Remove NAT rules
+        local subnet=$(get_config ".networks.containers.subnet" "10.0.0.0/24")
+        iptables -t nat -D POSTROUTING -s "$subnet" ! -d "$subnet" -j MASQUERADE 2>/dev/null || true
+        
+        log "SUCCESS" "Network configuration reset"
+    else
+        log "INFO" "[DRY RUN] Would reset network configuration"
+    fi
+}
+
+# Get network information
+get_network_info() {
+    log "INFO" "Network Information:"
+    
+    local bridge=$(get_config ".networks.containers.bridge" "vmbr1")
+    local subnet=$(get_config ".networks.containers.subnet" "10.0.0.0/24")
+    local gateway=$(get_config ".networks.containers.gateway" "10.0.0.1")
+    
+    echo "Container Bridge: $bridge"
+    echo "Container Subnet: $subnet"
+    echo "Container Gateway: $gateway"
+    
+    if ip link show "$bridge" &>/dev/null; then
+        echo "Bridge Status: UP"
+        local bridge_ip=$(ip addr show "$bridge" | grep -o 'inet [^/]*' | cut -d' ' -f2)
+        echo "Bridge IP: ${bridge_ip:-Not assigned}"
+    else
+        echo "Bridge Status: DOWN"
+    fi
+    
+    echo "IP Forwarding: $(cat /proc/sys/net/ipv4/ip_forward)"
+    
+    # Show active containers on bridge
+    if command_exists pct; then
+        echo -e "\nContainers on bridge:"
+        pct list | grep -E "^[0-9]+" | while read -r line; do
+            local container_id=$(echo "$line" | awk '{print $1}')
+            local name=$(echo "$line" | awk '{print $3}')
+            local ip=$(pct config "$container_id" 2>/dev/null | grep -oP 'ip=\K[^/,]+' | head -1)
+            if [[ -n "$ip" ]]; then
+                printf "  %-5s %-20s %s\n" "$container_id" "$name" "$ip"
+            fi
+        done
+    fi
+}
+
+# Validate network configuration
+validate_network_config() {
+    log "INFO" "Validating network configuration..."
+    
+    local errors=0
+    local bridge=$(get_config ".networks.containers.bridge" "vmbr1")
+    local subnet=$(get_config ".networks.containers.subnet" "10.0.0.0/24")
+    local gateway=$(get_config ".networks.containers.gateway" "10.0.0.1")
+    
+    # Check if bridge exists
+    if ! ip link show "$bridge" &>/dev/null; then
+        log "ERROR" "Bridge $bridge does not exist"
+        ((errors++))
+    fi
+    
+    # Check if IP forwarding is enabled
+    if [[ $(cat /proc/sys/net/ipv4/ip_forward) != "1" ]]; then
+        log "ERROR" "IP forwarding is not enabled"
+        ((errors++))
+    fi
+    
+    # Check gateway IP is configured
+    if ! ip addr show "$bridge" | grep -q "$gateway"; then
+        log "ERROR" "Gateway IP $gateway not configured on bridge $bridge"
+        ((errors++))
+    fi
+    
+    if [[ $errors -eq 0 ]]; then
+        log "SUCCESS" "Network configuration validation passed"
+        return 0
+    else
+        log "ERROR" "Network configuration validation failed ($errors errors)"
+        return 1
+    fi
+}
+
 # Allow running this script standalone
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.yaml}"

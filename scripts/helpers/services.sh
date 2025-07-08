@@ -169,38 +169,22 @@ create_service_container() {
     local memory=$(yq eval '.container.resources.memory // 1024' "$container_config")
     local disk=$(yq eval '.container.resources.disk // 20' "$container_config")
     
-    # Get Proxmox configuration
-    local storage=$(get_config ".proxmox.storage" "local-lvm")
-    local template=$(get_config ".proxmox.template" "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst")
-    local bridge=$(get_config ".networks.containers.bridge" "vmbr1")
-    local gateway=$(get_config ".networks.containers.gateway" "10.0.0.1")
+    # Use the create_container function from containers.sh
+    create_container "$hostname" "$container_id" "$container_ip" "$cpu" "$memory" "$disk" || return 1
     
-    if [[ "$DRY_RUN" == "false" ]]; then
-        # Create container
-        pct create "$container_id" "$template" \
-            --hostname "$hostname" \
-            --cores "$cpu" \
-            --memory "$memory" \
-            --rootfs "$storage:$disk" \
-            --net0 "name=eth0,bridge=$bridge,ip=${container_ip}/24,gw=$gateway" \
-            --nameserver "$(get_config '.networks.core_services.pihole' "$gateway")" \
-            --features "nesting=1" \
-            --unprivileged 1 \
-            --start 1
-        
-        # Setup NFS mounts if configured
-        setup_nfs_mounts "$container_id" "$container_config"
-        
-        # Wait for container to be ready
-        wait_for_container_ready "$container_id"
-        
-        # Install Docker
-        setup_docker_in_container "$container_id"
-        
-        log "SUCCESS" "Container $container_id created for $service_name"
-    else
-        log "INFO" "[DRY RUN] Would create container $container_id for $service_name"
-    fi
+    # Setup Docker in container
+    setup_docker_in_container "$container_id" || return 1
+    
+    # Install Docker Compose
+    install_docker_compose "$container_id" || return 1
+    
+    # Setup NFS mounts if configured
+    setup_nfs_mounts "$container_id" "$container_config"
+    
+    # Apply additional container configuration
+    apply_container_config "$container_id" "$container_config"
+    
+    log "SUCCESS" "Container $container_id created for $service_name"
 }
 
 setup_nfs_mounts() {
@@ -380,6 +364,193 @@ verify_service_health() {
     
     log "WARN" "Service $service_name health check timeout after ${timeout}s"
     return 0  # Don't fail deployment for health check timeout
+}
+
+# Remove a service completely
+remove_service() {
+    local service_name="$1"
+    local service_config_dir="${PROJECT_ROOT}/config/services/$service_name"
+    
+    if [[ ! -d "$service_config_dir" ]]; then
+        log "ERROR" "Service configuration directory not found: $service_config_dir"
+        return 1
+    fi
+    
+    local container_config="$service_config_dir/container.yaml"
+    if [[ ! -f "$container_config" ]]; then
+        log "ERROR" "Container configuration not found: $container_config"
+        return 1
+    fi
+    
+    local container_id=$(yq eval '.container.id' "$container_config")
+    
+    log "WARN" "Removing service: $service_name (container: $container_id)"
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Stop Docker services
+        if container_exists "$container_id"; then
+            container_exec "$container_id" bash -c "cd /opt/$service_name && docker compose down" 2>/dev/null || true
+            container_exec "$container_id" bash -c "docker system prune -f" 2>/dev/null || true
+        fi
+        
+        # Destroy container
+        destroy_container "$container_id"
+        
+        log "SUCCESS" "Service $service_name removed"
+    else
+        log "INFO" "[DRY RUN] Would remove service $service_name and container $container_id"
+    fi
+}
+
+# Stop a service
+stop_service() {
+    local service_name="$1"
+    local service_config_dir="${PROJECT_ROOT}/config/services/$service_name"
+    
+    if [[ ! -d "$service_config_dir" ]]; then
+        log "ERROR" "Service configuration directory not found: $service_config_dir"
+        return 1
+    fi
+    
+    local container_config="$service_config_dir/container.yaml"
+    local container_id=$(yq eval '.container.id' "$container_config")
+    
+    log "INFO" "Stopping service: $service_name"
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        if container_exists "$container_id"; then
+            container_exec "$container_id" bash -c "cd /opt/$service_name && docker compose down"
+            log "SUCCESS" "Service $service_name stopped"
+        else
+            log "WARN" "Container $container_id for service $service_name not found"
+        fi
+    else
+        log "INFO" "[DRY RUN] Would stop service $service_name"
+    fi
+}
+
+# Start a service
+start_service() {
+    local service_name="$1"
+    local service_config_dir="${PROJECT_ROOT}/config/services/$service_name"
+    
+    if [[ ! -d "$service_config_dir" ]]; then
+        log "ERROR" "Service configuration directory not found: $service_config_dir"
+        return 1
+    fi
+    
+    local container_config="$service_config_dir/container.yaml"
+    local container_id=$(yq eval '.container.id' "$container_config")
+    
+    log "INFO" "Starting service: $service_name"
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        if container_exists "$container_id"; then
+            start_container "$container_id"
+            container_exec "$container_id" bash -c "cd /opt/$service_name && docker compose up -d"
+            log "SUCCESS" "Service $service_name started"
+        else
+            log "ERROR" "Container $container_id for service $service_name not found"
+            return 1
+        fi
+    else
+        log "INFO" "[DRY RUN] Would start service $service_name"
+    fi
+}
+
+# Restart a service
+restart_service() {
+    local service_name="$1"
+    
+    log "INFO" "Restarting service: $service_name"
+    
+    stop_service "$service_name"
+    start_service "$service_name"
+}
+
+# Get service status
+get_service_status() {
+    local service_name="$1"
+    local service_config_dir="${PROJECT_ROOT}/config/services/$service_name"
+    
+    if [[ ! -d "$service_config_dir" ]]; then
+        echo "not_configured"
+        return 1
+    fi
+    
+    local container_config="$service_config_dir/container.yaml"
+    local container_id=$(yq eval '.container.id' "$container_config")
+    
+    if ! container_exists "$container_id"; then
+        echo "container_missing"
+        return 1
+    fi
+    
+    local container_status=$(get_container_status "$container_id")
+    if [[ "$container_status" != "running" ]]; then
+        echo "container_stopped"
+        return 1
+    fi
+    
+    # Check Docker services
+    local docker_services=$(container_exec "$container_id" bash -c "cd /opt/$service_name && docker compose ps -q 2>/dev/null | wc -l" 2>/dev/null || echo "0")
+    
+    if [[ "$docker_services" -gt 0 ]]; then
+        echo "running"
+    else
+        echo "stopped"
+    fi
+}
+
+# List all services and their status
+list_services() {
+    local services_dir="$PROJECT_ROOT/config/services"
+    
+    if [[ ! -d "$services_dir" ]]; then
+        log "INFO" "No services directory found"
+        return 0
+    fi
+    
+    log "INFO" "Listing all services:"
+    printf "%-20s %-15s %-10s %-15s %s\n" "SERVICE" "STATUS" "CONTAINER" "IP" "TYPE"
+    printf "%-20s %-15s %-10s %-15s %s\n" "-------" "------" "---------" "--" "----"
+    
+    # Get auto-deploy list
+    local auto_deploy_services=($(get_config '.services.auto_deploy[]' | tr '\n' ' '))
+    
+    while IFS= read -r -d '' service_dir; do
+        local service_name=$(basename "$service_dir")
+        
+        # Skip examples directory
+        if [[ "$service_name" == "examples" ]]; then
+            continue
+        fi
+        
+        local container_config="$service_dir/container.yaml"
+        local container_id="N/A"
+        local container_ip="N/A"
+        local service_type="manual"
+        
+        if [[ -f "$container_config" ]]; then
+            container_id=$(yq eval '.container.id' "$container_config")
+            container_ip=$(yq eval '.container.ip' "$container_config")
+        fi
+        
+        # Check if it's an auto-deploy service
+        if [[ " ${auto_deploy_services[*]} " =~ " ${service_name} " ]]; then
+            service_type="auto"
+        fi
+        
+        local status=$(get_service_status "$service_name")
+        
+        printf "%-20s %-15s %-10s %-15s %s\n" "$service_name" "$status" "$container_id" "$container_ip" "$service_type"
+    done < <(find "$services_dir" -mindepth 1 -maxdepth 1 -type d -print0)
+}
+
+# Generate a secure password
+generate_password() {
+    local length="${1:-32}"
+    openssl rand -base64 $((length * 3 / 4)) | tr -d "=+/" | cut -c1-$length
 }
 
 # Allow running this script standalone

@@ -1,13 +1,219 @@
 #!/bin/bash
 
 # ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║                            NOTIFICATION SYSTEM                              ║
+# ║                        NOTIFICATION & ALERTING SYSTEM                       ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 #
-# 🎯 PURPOSE: Send deployment notifications via Discord, email, etc.
-# 📱 Features: Success/failure notifications, deployment summaries
+# 🎯 PURPOSE: Configure notifications for monitoring alerts and system events
+# 📱 Features: Discord, Email, Telegram, and webhook notifications
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
+setup_notifications() {
+    log "STEP" "Setting up notification system..."
+    
+    setup_discord_notifications || return 1
+    setup_email_notifications || return 1
+    setup_webhook_notifications || return 1
+    test_notification_delivery || return 1
+    
+    log "SUCCESS" "Notification system setup completed"
+}
+
+setup_discord_notifications() {
+    local discord_enabled=$(get_config '.monitoring.alerts.discord' 'false')
+    
+    if [[ "$discord_enabled" != "true" ]]; then
+        log "INFO" "Discord notifications not enabled, skipping"
+        return 0
+    fi
+    
+    log "INFO" "Setting up Discord notifications..."
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Create Discord notification script
+        cat > /usr/local/bin/notify-discord << 'EOF'
+#!/bin/bash
+# Discord notification script for homelab
+
+WEBHOOK_URL="${DISCORD_WEBHOOK_URL}"
+MESSAGE="$1"
+TITLE="${2:-Homelab Alert}"
+COLOR="${3:-16711680}"  # Red by default
+
+if [[ -z "$WEBHOOK_URL" ]]; then
+    echo "Error: DISCORD_WEBHOOK_URL not set"
+    exit 1
+fi
+
+# Create Discord embed
+payload=$(cat <<EOF_JSON
+{
+  "embeds": [
+    {
+      "title": "$TITLE",
+      "description": "$MESSAGE",
+      "color": $COLOR,
+      "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+      "footer": {
+        "text": "Homelab Monitoring"
+      }
+    }
+  ]
+}
+EOF_JSON
+)
+
+# Send to Discord
+curl -s -H "Content-Type: application/json" \
+     -d "$payload" \
+     "$WEBHOOK_URL"
+EOF
+        
+        chmod +x /usr/local/bin/notify-discord
+        
+        log "SUCCESS" "Discord notifications configured"
+    else
+        log "INFO" "[DRY RUN] Would setup Discord notifications"
+    fi
+}
+
+setup_email_notifications() {
+    local email_enabled=$(get_config '.monitoring.alerts.email' 'false')
+    
+    if [[ "$email_enabled" != "true" ]]; then
+        log "INFO" "Email notifications not enabled, skipping"
+        return 0
+    fi
+    
+    log "INFO" "Setting up email notifications..."
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Install and configure mail utilities
+        apt update
+        apt install -y mailutils ssmtp
+        
+        # Configure SSMTP
+        local smtp_host=$(get_config '.smtp.host' 'smtp.gmail.com')
+        local smtp_port=$(get_config '.smtp.port' '587')
+        local smtp_user=$(get_config '.smtp.user')
+        local admin_email=$(get_config '.cluster.admin_email')
+        
+        cat > /etc/ssmtp/ssmtp.conf << EOF
+root=$admin_email
+mailhub=$smtp_host:$smtp_port
+AuthUser=$smtp_user
+AuthPass=\${SMTP_PASSWORD}
+UseSTARTTLS=YES
+EOF
+        
+        # Create email notification script
+        cat > /usr/local/bin/notify-email << 'EOF'
+#!/bin/bash
+# Email notification script for homelab
+
+TO="${1:-$(get_config '.cluster.admin_email')}"
+SUBJECT="${2:-Homelab Alert}"
+MESSAGE="$3"
+
+if [[ -z "$MESSAGE" ]]; then
+    echo "Usage: notify-email <to> <subject> <message>"
+    exit 1
+fi
+
+# Send email
+echo "$MESSAGE" | mail -s "$SUBJECT" "$TO"
+EOF
+        
+        chmod +x /usr/local/bin/notify-email
+        
+        log "SUCCESS" "Email notifications configured"
+    else
+        log "INFO" "[DRY RUN] Would setup email notifications"
+    fi
+}
+
+# Send deployment notifications
+send_deployment_notification() {
+    local status="$1"      # success, failure, warning
+    local message="$2"
+    local details="${3:-}"
+    
+    local title="Homelab Deployment"
+    local color="65280"  # Green for success
+    
+    case "$status" in
+        "failure"|"error")
+            title="Homelab Deployment Failed"
+            color="16711680"  # Red
+            ;;
+        "warning")
+            title="Homelab Deployment Warning"
+            color="16776960"  # Yellow
+            ;;
+    esac
+    
+    local full_message="$message"
+    if [[ -n "$details" ]]; then
+        full_message="$message\n\nDetails: $details"
+    fi
+    
+    # Send to all configured notification channels
+    if [[ -f /usr/local/bin/notify-discord && -n "${DISCORD_WEBHOOK_URL:-}" ]]; then
+        /usr/local/bin/notify-discord "$full_message" "$title" "$color"
+    fi
+    
+    if [[ -f /usr/local/bin/notify-email ]]; then
+        local admin_email=$(get_config '.cluster.admin_email')
+        if [[ -n "$admin_email" ]]; then
+            /usr/local/bin/notify-email "$admin_email" "$title" "$full_message"
+        fi
+    fi
+}
+
+# Send service status notifications
+send_service_notification() {
+    local service_name="$1"
+    local status="$2"      # started, stopped, failed, healthy, unhealthy
+    local details="${3:-}"
+    
+    local title="Service $service_name"
+    local color="65280"  # Green
+    
+    case "$status" in
+        "failed"|"unhealthy")
+            title="Service $service_name Failed"
+            color="16711680"  # Red
+            ;;
+        "stopped")
+            title="Service $service_name Stopped"
+            color="16776960"  # Yellow
+            ;;
+        "started"|"healthy")
+            title="Service $service_name Started"
+            color="65280"   # Green
+            ;;
+    esac
+    
+    local message="Service $service_name is now $status"
+    if [[ -n "$details" ]]; then
+        message="$message\n\nDetails: $details"
+    fi
+    
+    # Only send critical notifications by default
+    if [[ "$status" == "failed" || "$status" == "unhealthy" ]]; then
+        if [[ -f /usr/local/bin/notify-discord && -n "${DISCORD_WEBHOOK_URL:-}" ]]; then
+            /usr/local/bin/notify-discord "$message" "$title" "$color"
+        fi
+        
+        if [[ -f /usr/local/bin/notify-email ]]; then
+            local admin_email=$(get_config '.cluster.admin_email')
+            if [[ -n "$admin_email" ]]; then
+                /usr/local/bin/notify-email "$admin_email" "$title" "$message"
+            fi
+        fi
+    fi
+}
 
 send_deployment_notification() {
     local status="$1"           # success, failure, warning

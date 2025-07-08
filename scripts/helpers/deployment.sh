@@ -44,8 +44,16 @@ validate_core_services() {
 
 validate_core_service() {
     local service_name="$1"
-    local service_key="${service_name//-/_}"
-    local service_ip=$(get_config ".networks.core_services.$service_key")
+    local service_config_dir="${PROJECT_ROOT}/config/services/$service_name"
+    
+    if [[ ! -d "$service_config_dir" ]]; then
+        log "WARN" "Service $service_name not found, skipping validation"
+        return 0
+    fi
+    
+    local container_config="$service_config_dir/container.yaml"
+    local container_id=$(yq eval '.container.id' "$container_config")
+    local service_ip=$(yq eval '.container.ip' "$container_config")
     
     if [[ "$service_ip" == "null" ]]; then
         log "DEBUG" "Service $service_name not configured, skipping validation"
