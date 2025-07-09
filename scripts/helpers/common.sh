@@ -13,6 +13,12 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     exit 1
 fi
 
+# Guard against multiple sourcing
+if [[ -n "${COMMON_SH_SOURCED:-}" ]]; then
+    return 0
+fi
+readonly COMMON_SH_SOURCED=1
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 🎨 COLORS AND FORMATTING
 # ══════════════════════════════════════════════════════════════════════════════

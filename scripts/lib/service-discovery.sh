@@ -8,6 +8,12 @@
 # 📝 USAGE: Source this file in other scripts to access service discovery functions
 # 🔧 FEATURES: Service enumeration, dependency resolution, metadata access
 
+# Guard against multiple sourcing
+if [[ -n "${SERVICE_DISCOVERY_SH_SOURCED:-}" ]]; then
+    return 0
+fi
+readonly SERVICE_DISCOVERY_SH_SOURCED=1
+
 # Source configuration library
 SERVICE_DISCOVERY_SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 source "$SERVICE_DISCOVERY_SCRIPT_DIR/config.sh"

@@ -8,6 +8,12 @@
 # 📝 USAGE: Source this file in other scripts to access configuration functions
 # 🔧 FEATURES: Environment variable substitution, validation, caching
 
+# Guard against multiple sourcing
+if [[ -n "${CONFIG_SH_SOURCED:-}" ]]; then
+    return 0
+fi
+readonly CONFIG_SH_SOURCED=1
+
 # Configuration paths
 LIB_SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 HOMELAB_ROOT="$(dirname "$(dirname "$LIB_SCRIPT_DIR")")"

@@ -8,6 +8,12 @@
 # 📝 USAGE: Source this file in other scripts to access validation functions
 # 🔧 FEATURES: JSON validation, network validation, service validation
 
+# Guard against multiple sourcing
+if [[ -n "${VALIDATION_SH_SOURCED:-}" ]]; then
+    return 0
+fi
+readonly VALIDATION_SH_SOURCED=1
+
 # Source configuration library
 VALIDATION_SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 source "$VALIDATION_SCRIPT_DIR/config.sh"
