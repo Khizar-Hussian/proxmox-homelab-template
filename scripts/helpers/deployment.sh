@@ -51,7 +51,7 @@ validate_core_service() {
         return 0
     fi
     
-    local container_config="$service_config_dir/container.yaml"
+    local container_config="$service_config_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     local service_ip=$(yq eval '.container.ip' "$container_config")
     
@@ -230,7 +230,7 @@ validate_user_services() {
 validate_user_service() {
     local service_name="$1"
     local service_dir="$PROJECT_ROOT/config/services/$service_name"
-    local container_config="$service_dir/container.yaml"
+    local container_config="$service_dir/container.json"
     
     if [[ ! -f "$container_config" ]]; then
         log "ERROR" "Container config not found for $service_name"
@@ -488,7 +488,7 @@ generate_deployment_report() {
             for service_dir in "$services_dir"/*; do
                 if [[ -d "$service_dir" ]]; then
                     local service_name=$(basename "$service_dir")
-                    local container_config="$service_dir/container.yaml"
+                    local container_config="$service_dir/container.json"
                     if [[ -f "$container_config" ]]; then
                         local container_id=$(yq eval '.container.id' "$container_config")
                         local container_ip=$(yq eval '.container.ip' "$container_config")
@@ -654,7 +654,7 @@ check_services_health() {
         for service_dir in "$services_dir"/*; do
             if [[ -d "$service_dir" ]]; then
                 local service_name=$(basename "$service_dir")
-                local container_config="$service_dir/container.yaml"
+                local container_config="$service_dir/container.json"
                 
                 if [[ -f "$container_config" ]]; then
                     local container_id=$(yq eval '.container.id' "$container_config")

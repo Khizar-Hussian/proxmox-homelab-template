@@ -291,8 +291,8 @@ get_network_info() {
     fi
 }
 
-# Validate network configuration
-validate_network_config() {
+# Validate network configuration on Proxmox host
+validate_proxmox_network_config() {
     log "INFO" "Validating network configuration..."
     
     local errors=0
@@ -300,22 +300,22 @@ validate_network_config() {
     local subnet=$(get_config ".networks.containers.subnet" "10.0.0.0/24")
     local gateway=$(get_config ".networks.containers.gateway" "10.0.0.1")
     
-    # Check if bridge exists
-    if ! ip link show "$bridge" &>/dev/null; then
-        log "ERROR" "Bridge $bridge does not exist"
-        ((errors++))
+    # Check if bridge exists (only if we're not in initial deployment)
+    if ip link show "$bridge" &>/dev/null; then
+        log "INFO" "Bridge $bridge exists"
+        
+        # Check gateway IP is configured
+        if ! ip addr show "$bridge" | grep -q "$gateway"; then
+            log "ERROR" "Gateway IP $gateway not configured on bridge $bridge"
+            ((errors++))
+        fi
+    else
+        log "INFO" "Bridge $bridge does not exist yet - will be created during deployment"
     fi
     
-    # Check if IP forwarding is enabled
+    # Check if IP forwarding is enabled (only warn, don't fail)
     if [[ $(cat /proc/sys/net/ipv4/ip_forward) != "1" ]]; then
-        log "ERROR" "IP forwarding is not enabled"
-        ((errors++))
-    fi
-    
-    # Check gateway IP is configured
-    if ! ip addr show "$bridge" | grep -q "$gateway"; then
-        log "ERROR" "Gateway IP $gateway not configured on bridge $bridge"
-        ((errors++))
+        log "WARN" "IP forwarding is not enabled - will be enabled during deployment"
     fi
     
     if [[ $errors -eq 0 ]]; then

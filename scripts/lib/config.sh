@@ -208,11 +208,20 @@ init_config() {
 # Print configuration summary
 print_config_summary() {
     echo "📋 Configuration Summary:"
-    echo "  Domain: $(get_config '.cluster.domain')"
-    echo "  Cluster: $(get_config '.cluster.name')"
-    echo "  Admin: $(get_config '.cluster.admin_email')"
-    echo "  Proxmox: $(get_config '.proxmox.host')"
-    echo "  NFS: $(get_config '.storage.nfs_server')"
+    
+    # Get values with better error handling
+    local domain cluster admin proxmox nfs
+    domain=$(get_config '.cluster.domain' 'Not configured')
+    cluster=$(get_config '.cluster.name' 'Not configured')
+    admin=$(get_config '.cluster.admin_email' 'Not configured')
+    proxmox=$(get_config '.proxmox.host' 'Not configured')
+    nfs=$(get_config '.storage.nfs_server' 'Not configured')
+    
+    echo "  Domain: $domain"
+    echo "  Cluster: $cluster"
+    echo "  Admin: $admin"
+    echo "  Proxmox: $proxmox"
+    echo "  NFS: $nfs"
     echo ""
     echo "🔧 Optional Features:"
     echo "  VPN: $(feature_enabled '.security.vpn.enabled' 'NORDVPN_PRIVATE_KEY' && echo 'enabled' || echo 'disabled')"

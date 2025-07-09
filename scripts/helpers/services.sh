@@ -96,7 +96,7 @@ deploy_service() {
     validate_service_config "$service_name" || return 1
     
     # Parse container configuration
-    local container_config="$service_dir/container.yaml"
+    local container_config="$service_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     local container_ip=$(yq eval '.container.ip' "$container_config")
     local hostname=$(yq eval '.container.hostname // "'"$service_name"'"' "$container_config")
@@ -136,19 +136,29 @@ validate_service_config() {
     local service_dir="$PROJECT_ROOT/config/services/$service_name"
     
     # Check required files
-    if [[ ! -f "$service_dir/container.yaml" ]]; then
-        log "ERROR" "Service $service_name missing container.yaml"
+    if [[ ! -f "$service_dir/container.json" ]]; then
+        log "ERROR" "Service $service_name missing container.json"
         return 1
     fi
     
-    if [[ ! -f "$service_dir/docker-compose.yml" ]]; then
-        log "ERROR" "Service $service_name missing docker-compose.yml"
+    if [[ ! -f "$service_dir/service.json" ]]; then
+        log "ERROR" "Service $service_name missing service.json"
         return 1
     fi
     
-    # Validate YAML syntax
-    if ! yq eval '.' "$service_dir/container.yaml" >/dev/null 2>&1; then
-        log "ERROR" "Invalid YAML in $service_dir/container.yaml"
+    if [[ ! -f "$service_dir/docker-compose.yaml" ]]; then
+        log "ERROR" "Service $service_name missing docker-compose.yaml"
+        return 1
+    fi
+    
+    # Validate JSON syntax
+    if ! jq '.' "$service_dir/container.json" >/dev/null 2>&1; then
+        log "ERROR" "Invalid JSON in $service_dir/container.json"
+        return 1
+    fi
+    
+    if ! jq '.' "$service_dir/service.json" >/dev/null 2>&1; then
+        log "ERROR" "Invalid JSON in $service_dir/service.json"
         return 1
     fi
     
@@ -376,7 +386,7 @@ remove_service() {
         return 1
     fi
     
-    local container_config="$service_config_dir/container.yaml"
+    local container_config="$service_config_dir/container.json"
     if [[ ! -f "$container_config" ]]; then
         log "ERROR" "Container configuration not found: $container_config"
         return 1
@@ -412,7 +422,7 @@ stop_service() {
         return 1
     fi
     
-    local container_config="$service_config_dir/container.yaml"
+    local container_config="$service_config_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     
     log "INFO" "Stopping service: $service_name"
@@ -439,7 +449,7 @@ start_service() {
         return 1
     fi
     
-    local container_config="$service_config_dir/container.yaml"
+    local container_config="$service_config_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     
     log "INFO" "Starting service: $service_name"
@@ -478,7 +488,7 @@ get_service_status() {
         return 1
     fi
     
-    local container_config="$service_config_dir/container.yaml"
+    local container_config="$service_config_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     
     if ! container_exists "$container_id"; then
@@ -526,7 +536,7 @@ list_services() {
             continue
         fi
         
-        local container_config="$service_dir/container.yaml"
+        local container_config="$service_dir/container.json"
         local container_id="N/A"
         local container_ip="N/A"
         local service_type="manual"

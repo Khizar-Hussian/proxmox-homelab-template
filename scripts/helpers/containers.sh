@@ -142,7 +142,7 @@ create_service_container() {
         return 1
     fi
     
-    local container_config="$service_config_dir/container.yaml"
+    local container_config="$service_config_dir/container.json"
     if [[ ! -f "$container_config" ]]; then
         log "ERROR" "Container configuration not found: $container_config"
         return 1

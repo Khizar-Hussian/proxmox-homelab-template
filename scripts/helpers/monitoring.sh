@@ -44,7 +44,7 @@ configure_prometheus_targets() {
         return 0
     fi
     
-    local container_config="$monitoring_service_dir/container.yaml"
+    local container_config="$monitoring_service_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     
     if ! container_exists "$container_id"; then
@@ -131,7 +131,7 @@ add_service_exporters() {
     for service_dir in "$services_dir"/*; do
         if [[ -d "$service_dir" && "$(basename "$service_dir")" != "examples" ]]; then
             local service_name=$(basename "$service_dir")
-            local container_config="$service_dir/container.yaml"
+            local container_config="$service_dir/container.json"
             
             if [[ -f "$container_config" ]]; then
                 local service_ip=$(yq eval '.container.ip' "$container_config")
@@ -182,7 +182,7 @@ setup_grafana_datasources() {
         return 0
     fi
     
-    local container_config="$monitoring_service_dir/container.yaml"
+    local container_config="$monitoring_service_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     
     if [[ "$DRY_RUN" == "false" ]]; then
@@ -263,7 +263,7 @@ configure_alerting_rules() {
         return 0
     fi
     
-    local container_config="$monitoring_service_dir/container.yaml"
+    local container_config="$monitoring_service_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     
     if [[ "$DRY_RUN" == "false" ]]; then
@@ -385,7 +385,7 @@ verify_monitoring_health() {
         return 0
     fi
     
-    local container_config="$monitoring_service_dir/container.yaml"
+    local container_config="$monitoring_service_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     local service_ip=$(yq eval '.container.ip' "$container_config")
     
@@ -442,7 +442,7 @@ get_monitoring_metrics() {
         return 1
     fi
     
-    local container_config="$monitoring_service_dir/container.yaml"
+    local container_config="$monitoring_service_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     local service_ip=$(yq eval '.container.ip' "$container_config")
     
@@ -474,7 +474,7 @@ backup_monitoring_config() {
         return 1
     fi
     
-    local container_config="$monitoring_service_dir/container.yaml"
+    local container_config="$monitoring_service_dir/container.json"
     local container_id=$(yq eval '.container.id' "$container_config")
     
     log "INFO" "Backing up monitoring configuration to $backup_dir"
