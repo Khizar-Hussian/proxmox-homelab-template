@@ -1,0 +1,79 @@
+{
+  "_description": "Homepage Dashboard Service Container Configuration",
+  "_purpose": "Beautiful homelab service dashboard and homepage",
+  "_features": ["Service tiles", "system stats", "weather", "bookmarks", "quick links"],
+  "_monitoring": ["Service status", "system resources", "container metrics"],
+  
+  "container": {
+    "id": 144,
+    "hostname": "homepage",
+    "ip": "10.0.0.44",
+    "resources": {
+      "cpu": 1,
+      "memory": 512,
+      "disk": 8,
+      "_units": {
+        "memory": "MB",
+        "disk": "GB"
+      }
+    },
+    "features": [
+      "nesting=1"
+    ],
+    "nfs_mounts": [],
+    "_note": "Docker socket access required for container monitoring"
+  },
+  
+  "certificates": {
+    "domains": [
+      "homepage.${DOMAIN}",
+      "${DOMAIN}"
+    ],
+    "_description": "SSL certificates for both subdomain and main domain"
+  },
+  
+  "external_access": {
+    "cloudflare_tunnel": {
+      "enabled": true,
+      "subdomain": "homepage"
+    },
+    "main_domain": true,
+    "internal_access": {
+      "port": 3000,
+      "path": "/"
+    },
+    "_note": "Serves as both subdomain and main domain homepage"
+  },
+  
+  "service": {
+    "type": "dashboard",
+    "category": "interface",
+    "priority": 3,
+    "_priority_note": "Deploy after DNS and proxy",
+    "health_check": {
+      "enabled": true,
+      "endpoint": "/",
+      "port": 3000,
+      "interval": 30
+    },
+    "monitoring": {
+      "enabled": true,
+      "metrics_port": 3001,
+      "dashboards": [
+        "homepage-overview"
+      ],
+      "_exporter": "Homepage metrics endpoint"
+    }
+  },
+  
+  "backup": {
+    "enabled": true,
+    "paths": [
+      "/opt/homepage/config"
+    ],
+    "schedule": "weekly",
+    "_paths_description": {
+      "/opt/homepage/config": "Homepage configuration and settings"
+    }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "_description": "Authentik SSO Service Metadata",
+  "_format_version": "2.0.0",
+  
+  "service": {
+    "name": "authentik",
+    "display_name": "Authentik SSO",
+    "description": "Single Sign-On and identity provider for all homelab services",
+    "category": "infrastructure",
+    "subcategory": "authentication",
+    "version": "latest",
+    "maintainer": "Authentik Team",
+    "documentation": "https://docs.goauthentik.io/",
+    "icon": "authentik.png",
+    "tags": ["sso", "authentication", "identity", "oidc", "saml", "mfa"]
+  },
+  
+  "dependencies": {
+    "required": ["pihole", "nginx-proxy"],
+    "optional": ["monitoring"],
+    "conflicts": [],
+    "_note": "Requires DNS and proxy, optionally provides metrics to monitoring"
+  },
+  
+  "external_access": {
+    "enabled": true,
+    "subdomain": "auth",
+    "public": true,
+    "authentication_required": false,
+    "description": "Authentik SSO login page and user management",
+    "additional_subdomains": ["authentik"]
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "metrics_available": true,
+    "dashboards": [
+      {
+        "name": "authentik-overview",
+        "description": "Authentik service status and performance"
+      },
+      {
+        "name": "authentication-events",
+        "description": "User authentication events and security metrics"
+      }
+    ],
+    "alerts": [
+      {
+        "name": "authentik_down",
+        "description": "Authentik authentication service is not responding"
+      },
+      {
+        "name": "failed_login_attempts",
+        "description": "High number of failed login attempts detected"
+      },
+      {
+        "name": "database_connection_failed",
+        "description": "Authentik cannot connect to database"
+      }
+    ]
+  },
+  
+  "backup": {
+    "enabled": true,
+    "critical": true,
+    "description": "User accounts, configurations, and authentication data",
+    "restore_priority": "high"
+  },
+  
+  "security": {
+    "network_access": "public",
+    "data_sensitivity": "high",
+    "compliance_notes": "Contains user authentication data and credentials - highest security required"
+  }
+}

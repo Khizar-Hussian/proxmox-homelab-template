@@ -1,0 +1,80 @@
+{
+  "_description": "Pi-hole DNS Service Container Configuration",
+  "_purpose": "Network-wide DNS and ad-blocking service",
+  "_features": ["DNS resolution", "ad-blocking", "local domain management"],
+  "_monitoring": ["DNS query logs", "blocked queries", "top domains"],
+  
+  "container": {
+    "id": 140,
+    "hostname": "pihole",
+    "ip": "10.0.0.40",
+    "resources": {
+      "cpu": 1,
+      "memory": 512,
+      "disk": 8,
+      "_units": {
+        "memory": "MB",
+        "disk": "GB"
+      }
+    },
+    "features": [
+      "nesting=1"
+    ],
+    "nfs_mounts": [],
+    "_note": "DNS service requires nesting capability for proper operation"
+  },
+  
+  "certificates": {
+    "domains": [
+      "pihole.${DOMAIN}"
+    ],
+    "_description": "SSL certificate configuration for Pi-hole admin interface"
+  },
+  
+  "external_access": {
+    "cloudflare_tunnel": {
+      "enabled": true,
+      "subdomain": "pihole"
+    },
+    "internal_access": {
+      "port": 80,
+      "path": "/admin"
+    },
+    "_note": "Pi-hole admin interface accessible via internal network and tunnel"
+  },
+  
+  "service": {
+    "type": "dns",
+    "category": "infrastructure",
+    "priority": 1,
+    "_priority_note": "Deploy first - other services need DNS resolution",
+    "health_check": {
+      "enabled": true,
+      "endpoint": "/admin",
+      "port": 80,
+      "interval": 30
+    },
+    "monitoring": {
+      "enabled": true,
+      "metrics_port": 9617,
+      "dashboards": [
+        "pihole-overview",
+        "dns-queries"
+      ],
+      "_exporter": "Pi-hole exporter for Prometheus metrics"
+    }
+  },
+  
+  "backup": {
+    "enabled": true,
+    "paths": [
+      "/opt/pihole/etc-pihole",
+      "/opt/pihole/etc-dnsmasq.d"
+    ],
+    "schedule": "daily",
+    "_paths_description": {
+      "/opt/pihole/etc-pihole": "Pi-hole configuration and blocklists",
+      "/opt/pihole/etc-dnsmasq.d": "DNS server configuration"
+    }
+  }
+}

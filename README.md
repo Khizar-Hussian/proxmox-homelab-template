@@ -49,31 +49,47 @@ Deploy a complete homelab infrastructure on Proxmox with enterprise-grade reliab
 git clone https://github.com/yourusername/proxmox-homelab-template.git
 cd proxmox-homelab-template
 
-# Copy and customize configuration
-cp config/cluster.yaml.example config/cluster.yaml
-nano config/cluster.yaml  # Edit with your settings
-```
-
-### 2. Set Environment Variables
-
-```bash
-# Copy environment template
+# Copy configuration template
 cp .env.example .env
-nano .env  # Add your credentials
+
+# Edit with your secrets and settings
+nano .env
 ```
+
+### 2. Set Required Configuration
+
+Edit the `.env` file with your settings:
 
 **Required variables:**
+- `DOMAIN` - Your domain name (managed by Cloudflare)
+- `ADMIN_EMAIL` - Admin email for certificates and notifications
 - `PROXMOX_HOST` - Your Proxmox server IP
 - `PROXMOX_TOKEN` - Proxmox API token  
 - `AUTHENTIK_ADMIN_PASSWORD` - Admin password for SSO
 - `CLOUDFLARE_API_TOKEN` - For automatic SSL certificates
+- `MANAGEMENT_SUBNET` - Your home network subnet (e.g., 192.168.1.0/24)
+- `MANAGEMENT_GATEWAY` - Your router IP (e.g., 192.168.1.1)
+- `NFS_SERVER` - Your NFS server IP (TrueNAS, Synology, etc.)
 
 **Optional but recommended:**
+- `CLOUDFLARE_TUNNEL_TOKEN` - For external access to services
 - `NORDVPN_PRIVATE_KEY` - For VPN privacy (NordVPN WireGuard key)
-- `VPN_PROVIDER` - VPN provider (nordvpn, surfshark, expressvpn)
-- `VPN_COUNTRIES` - Preferred VPN server countries
+- `DISCORD_WEBHOOK` - For deployment notifications
 
-### 3. Deploy Infrastructure
+### 3. Validate Configuration
+
+```bash
+# Validate your configuration
+./scripts/validate-config.sh --verbose
+```
+
+The new JSON-based configuration system provides:
+- **Self-documenting**: Rich inline documentation
+- **Secrets separation**: Clean separation of configuration and secrets
+- **Better validation**: Comprehensive error checking with helpful messages
+- **Service discovery**: Dynamic service metadata and dependency management
+
+### 4. Deploy Infrastructure
 
 ```bash
 # Run deployment (takes 5-10 minutes)

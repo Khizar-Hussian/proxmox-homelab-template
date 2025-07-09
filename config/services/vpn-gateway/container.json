@@ -1,0 +1,80 @@
+{
+  "_description": "VPN Gateway Service Container Configuration",
+  "_purpose": "Centralized VPN gateway for privacy-focused services",
+  "_features": ["WireGuard/OpenVPN support", "kill switch", "multi-provider support"],
+  "_monitoring": ["VPN connection status", "IP leak detection", "bandwidth usage"],
+  
+  "container": {
+    "id": 139,
+    "hostname": "vpn-gateway",
+    "ip": "10.0.0.39",
+    "resources": {
+      "cpu": 1,
+      "memory": 256,
+      "disk": 5,
+      "_units": {
+        "memory": "MB", 
+        "disk": "GB"
+      }
+    },
+    "features": [
+      "nesting=1"
+    ],
+    "nfs_mounts": [],
+    "_note": "VPN requires special network capabilities for tunneling"
+  },
+  
+  "certificates": {
+    "domains": [
+      "vpn.${DOMAIN}"
+    ],
+    "_description": "Internal access only - VPN gateway should not be externally accessible"
+  },
+  
+  "external_access": {
+    "cloudflare_tunnel": {
+      "enabled": false,
+      "_note": "VPN gateway should not be externally accessible for security"
+    },
+    "internal_access": {
+      "port": 8000,
+      "path": "/",
+      "description": "VPN status and configuration interface"
+    }
+  },
+  
+  "service": {
+    "type": "vpn",
+    "category": "infrastructure", 
+    "priority": 1.5,
+    "_priority_note": "Deploy after DNS but before other services that need VPN",
+    "health_check": {
+      "enabled": true,
+      "method": "custom",
+      "script": "/scripts/vpn-health-check.sh",
+      "interval": 30
+    },
+    "monitoring": {
+      "enabled": true,
+      "metrics_port": 8001,
+      "dashboards": [
+        "vpn-overview",
+        "vpn-performance"
+      ],
+      "_exporter": "Custom VPN metrics endpoint"
+    }
+  },
+  
+  "backup": {
+    "enabled": true,
+    "paths": [
+      "/config/vpn",
+      "/config/wireguard"
+    ],
+    "schedule": "weekly",
+    "_paths_description": {
+      "/config/vpn": "VPN configuration files",
+      "/config/wireguard": "WireGuard keys and configs"
+    }
+  }
+}

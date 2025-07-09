@@ -8,8 +8,8 @@
 *.crt
 *.csr
 
-# Configuration files with sensitive data
-config/cluster.yaml
+# Configuration files with sensitive data (user's actual .env file)
+# Note: config/cluster.json is not sensitive and should be committed
 config/secrets/
 private/
 .private/

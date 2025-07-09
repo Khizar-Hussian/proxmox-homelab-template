@@ -1,0 +1,75 @@
+{
+  "_description": "Monitoring Stack Service Metadata",
+  "_format_version": "2.0.0",
+  
+  "service": {
+    "name": "monitoring",
+    "display_name": "Monitoring Stack",
+    "description": "Prometheus metrics collection and Grafana visualization stack",
+    "category": "infrastructure",
+    "subcategory": "monitoring",
+    "version": "latest",
+    "maintainer": "Prometheus & Grafana Teams",
+    "documentation": "docs/services/monitoring.md",
+    "icon": "grafana.png",
+    "tags": ["monitoring", "metrics", "prometheus", "grafana", "alerting"]
+  },
+  
+  "dependencies": {
+    "required": ["pihole", "nginx-proxy"],
+    "optional": ["authentik"],
+    "conflicts": [],
+    "_note": "Requires DNS and proxy, optionally integrates with authentication"
+  },
+  
+  "external_access": {
+    "enabled": true,
+    "subdomain": "grafana",
+    "public": false,
+    "authentication_required": true,
+    "description": "Grafana dashboards and Prometheus metrics",
+    "additional_subdomains": ["prometheus", "alertmanager"]
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "metrics_available": true,
+    "dashboards": [
+      {
+        "name": "prometheus-overview",
+        "description": "Prometheus server performance and metrics"
+      },
+      {
+        "name": "grafana-analytics",
+        "description": "Grafana usage and dashboard analytics"
+      }
+    ],
+    "alerts": [
+      {
+        "name": "prometheus_down",
+        "description": "Prometheus server is not responding"
+      },
+      {
+        "name": "grafana_down",
+        "description": "Grafana dashboard is not accessible"
+      },
+      {
+        "name": "disk_space_low",
+        "description": "Monitoring storage space is running low"
+      }
+    ]
+  },
+  
+  "backup": {
+    "enabled": true,
+    "critical": true,
+    "description": "Monitoring data, dashboards, and alert configurations",
+    "restore_priority": "high"
+  },
+  
+  "security": {
+    "network_access": "internal",
+    "data_sensitivity": "medium",
+    "compliance_notes": "Contains system metrics and performance data"
+  }
+}

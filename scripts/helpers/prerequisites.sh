@@ -171,7 +171,7 @@ check_cluster_config() {
     
     if [[ ! -f "$CLUSTER_CONFIG" ]]; then
         log "ERROR" "Cluster configuration not found: $CLUSTER_CONFIG"
-        log "INFO" "Copy the example: cp config/cluster.yaml.example config/cluster.yaml"
+        log "INFO" "Copy the example: cp .env.example .env"
         return 1
     fi
     
@@ -186,7 +186,7 @@ check_cluster_config() {
 
 # Allow running this script standalone for testing
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.yaml}"
+    CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.json}"
     PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
     check_prerequisites
 fi

@@ -1,0 +1,70 @@
+{
+  "_description": "Nginx Proxy Manager Service Metadata",
+  "_format_version": "2.0.0",
+  
+  "service": {
+    "name": "nginx-proxy",
+    "display_name": "Nginx Proxy Manager",
+    "description": "Reverse proxy with SSL termination and web-based management",
+    "category": "infrastructure",
+    "subcategory": "proxy",
+    "version": "latest",
+    "maintainer": "Nginx Proxy Manager Team",
+    "documentation": "https://nginxproxymanager.com/",
+    "icon": "nginx.png",
+    "tags": ["proxy", "ssl", "reverse-proxy", "web-management"]
+  },
+  
+  "dependencies": {
+    "required": ["pihole"],
+    "optional": ["vpn-gateway"],
+    "conflicts": [],
+    "_note": "Requires DNS resolution, optionally uses VPN for upstream connections"
+  },
+  
+  "external_access": {
+    "enabled": true,
+    "subdomain": "proxy",
+    "public": false,
+    "authentication_required": true,
+    "description": "Nginx Proxy Manager web interface for SSL and proxy management"
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "metrics_available": true,
+    "dashboards": [
+      {
+        "name": "nginx-overview",
+        "description": "Nginx proxy performance and request metrics"
+      },
+      {
+        "name": "ssl-certificates",
+        "description": "SSL certificate status and expiration tracking"
+      }
+    ],
+    "alerts": [
+      {
+        "name": "proxy_service_down",
+        "description": "Nginx proxy service is not responding"
+      },
+      {
+        "name": "ssl_cert_expiring",
+        "description": "SSL certificate expiring within 30 days"
+      }
+    ]
+  },
+  
+  "backup": {
+    "enabled": true,
+    "critical": true,
+    "description": "Proxy configurations and SSL certificates",
+    "restore_priority": "high"
+  },
+  
+  "security": {
+    "network_access": "internal",
+    "data_sensitivity": "high",
+    "compliance_notes": "Contains SSL certificates and proxy configurations"
+  }
+}

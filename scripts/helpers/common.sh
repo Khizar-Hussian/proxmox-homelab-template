@@ -42,7 +42,7 @@ log() {
         "ERROR")   echo -e "${RED}[ERROR]${NC} ${timestamp} - $*" >&2 ;;
         "SUCCESS") echo -e "${GREEN}[✓]${NC}    ${timestamp} - $*" ;;
         "STEP")    echo -e "${PURPLE}[STEP]${NC} ${timestamp} - $*" ;;
-        "DEBUG")   [[ "${VERBOSE:-false}" == "true" ]] && echo -e "${BLUE}[DEBUG]${NC} ${timestamp} - $*" ;;
+        "DEBUG")   [[ "${DEBUG:-false}" == "true" ]] && echo -e "${BLUE}[DEBUG]${NC} ${timestamp} - $*" ;;
     esac
 }
 
@@ -85,7 +85,8 @@ get_config() {
     local config_file="${CLUSTER_CONFIG:-config/cluster.yaml}"
     
     if [[ -f "$config_file" ]]; then
-        local value=$(yq eval "$path" "$config_file" 2>/dev/null)
+        # Note: This function is deprecated - use get_config() from lib/config.sh instead
+        local value=$(jq -r "$path // empty" "$config_file" 2>/dev/null)
         if [[ "$value" != "null" && -n "$value" ]]; then
             echo "$value"
         else

@@ -1,0 +1,63 @@
+{
+  "_description": "Homepage Dashboard Service Metadata",
+  "_format_version": "2.0.0",
+  
+  "service": {
+    "name": "homepage",
+    "display_name": "Homepage Dashboard",
+    "description": "Beautiful service dashboard and homelab homepage",
+    "category": "interface",
+    "subcategory": "dashboard",
+    "version": "latest",
+    "maintainer": "Homepage Team",
+    "documentation": "https://gethomepage.dev/",
+    "icon": "homepage.png",
+    "tags": ["dashboard", "homepage", "ui", "monitoring"]
+  },
+  
+  "dependencies": {
+    "required": ["pihole", "nginx-proxy"],
+    "optional": ["monitoring", "authentik"],
+    "conflicts": [],
+    "_note": "Requires DNS and proxy, optionally integrates with monitoring and auth"
+  },
+  
+  "external_access": {
+    "enabled": true,
+    "subdomain": "homepage",
+    "public": true,
+    "authentication_required": false,
+    "description": "Main homelab dashboard accessible to all users",
+    "main_domain": true
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "metrics_available": true,
+    "dashboards": [
+      {
+        "name": "homepage-overview",
+        "description": "Homepage service status and usage metrics"
+      }
+    ],
+    "alerts": [
+      {
+        "name": "homepage_service_down",
+        "description": "Homepage dashboard is not accessible"
+      }
+    ]
+  },
+  
+  "backup": {
+    "enabled": true,
+    "critical": false,
+    "description": "Homepage configuration and customizations",
+    "restore_priority": "low"
+  },
+  
+  "security": {
+    "network_access": "public",
+    "data_sensitivity": "low",
+    "compliance_notes": "Public dashboard - no sensitive data stored"
+  }
+}

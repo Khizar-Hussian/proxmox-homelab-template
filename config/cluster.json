@@ -1,0 +1,266 @@
+{
+  "_description": "Proxmox Homelab Template Configuration",
+  "_format_version": "2.0.0",
+  "_migration_from": "cluster.yaml",
+  "_usage": "This file configures your entire homelab infrastructure. Use environment variables for secrets.",
+  
+  "cluster": {
+    "_description": "Basic cluster identification and domain settings",
+    "name": "${CLUSTER_NAME:-homelab}",
+    "domain": "${DOMAIN}",
+    "internal_domain": "${INTERNAL_DOMAIN:-${DOMAIN}}",
+    "timezone": "${TIMEZONE:-America/New_York}",
+    "admin_email": "${ADMIN_EMAIL}"
+  },
+  
+  "proxmox": {
+    "_description": "Proxmox server connection and resource settings",
+    "host": "${PROXMOX_HOST}",
+    "api_port": "${PROXMOX_API_PORT:-8006}",
+    "storage": "${PROXMOX_STORAGE:-local-lvm}",
+    "template": "${PROXMOX_TEMPLATE:-local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst}",
+    "_note": "Get API token from Proxmox web UI: Datacenter > Permissions > API Tokens"
+  },
+  
+  "networking": {
+    "_description": "Network configuration for management and container networks",
+    "management": {
+      "_description": "Your existing home/management network",
+      "bridge": "${MANAGEMENT_BRIDGE:-vmbr0}",
+      "subnet": "${MANAGEMENT_SUBNET}",
+      "gateway": "${MANAGEMENT_GATEWAY}",
+      "_example": "subnet: 192.168.1.0/24, gateway: 192.168.1.1"
+    },
+    "containers": {
+      "_description": "Isolated network for containers (automatically created)",
+      "bridge": "${CONTAINER_BRIDGE:-vmbr1}",
+      "subnet": "${CONTAINER_SUBNET:-10.0.0.0/24}",
+      "gateway": "${CONTAINER_GATEWAY:-10.0.0.1}",
+      "_ip_allocation": {
+        "core_services": "10.0.0.40-49",
+        "download_services": "10.0.0.10-19",
+        "productivity_services": "10.0.0.60-69",
+        "user_services": "10.0.0.70+"
+      }
+    }
+  },
+  
+  "storage": {
+    "_description": "NFS storage configuration for persistent data",
+    "nfs_server": "${NFS_SERVER}",
+    "paths": {
+      "_description": "Base paths on your NFS server",
+      "media": "${NFS_MEDIA_PATH:-/mnt/tank/media}",
+      "config": "${NFS_CONFIG_PATH:-/mnt/tank/config}",
+      "backups": "${NFS_BACKUP_PATH:-/mnt/tank/backups}"
+    },
+    "_note": "NFS server can be TrueNAS, Synology, or any NFS-compatible system"
+  },
+  
+  "services": {
+    "_description": "Service deployment configuration and defaults",
+    "auto_deploy": [
+      "pihole",
+      "vpn-gateway", 
+      "nginx-proxy",
+      "homepage",
+      "monitoring",
+      "authentik"
+    ],
+    "deploy_order": [
+      "pihole",
+      "vpn-gateway",
+      "nginx-proxy", 
+      "homepage",
+      "monitoring",
+      "authentik"
+    ],
+    "defaults": {
+      "_description": "Default settings applied to all services",
+      "auto_generate_passwords": true,
+      "enable_monitoring": true,
+      "enable_backups": true,
+      "health_check": {
+        "enabled": true,
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3
+      }
+    }
+  },
+  
+  "security": {
+    "_description": "Security settings and authentication configuration",
+    "firewall": "${ENABLE_FIREWALL:-true}",
+    "fail2ban": "${ENABLE_FAIL2BAN:-true}",
+    "auto_updates": "${ENABLE_AUTO_UPDATES:-true}",
+    "vpn": {
+      "_description": "VPN configuration for download services privacy",
+      "enabled": "${VPN_ENABLED:-true}",
+      "provider": "${VPN_PROVIDER:-nordvpn}",
+      "protocol": "${VPN_PROTOCOL:-openvpn}",
+      "country": "${VPN_COUNTRY:-United States}",
+      "routed_services": [
+        "qbittorrent"
+      ],
+      "_note": "Requires VPN provider credentials in secrets"
+    }
+  },
+  
+  "external_access": {
+    "_description": "External access configuration via Cloudflare tunnels",
+    "cloudflare": {
+      "enabled": "${CLOUDFLARE_ENABLED:-true}",
+      "tunnel_name": "${CLOUDFLARE_TUNNEL_NAME:-homelab-tunnel}",
+      "public_services": [
+        "homepage",
+        "authentik"
+      ],
+      "protected_services": [
+        "grafana",
+        "nginx-proxy"
+      ],
+      "private_services": [
+        "pihole"
+      ]
+    },
+    "_note": "Requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_TUNNEL_TOKEN"
+  },
+  
+  "certificates": {
+    "_description": "SSL certificate configuration via Let's Encrypt",
+    "provider": "letsencrypt",
+    "letsencrypt": {
+      "email": "${LETSENCRYPT_EMAIL:-${ADMIN_EMAIL}}",
+      "dns_provider": "cloudflare",
+      "staging": "${LETSENCRYPT_STAGING:-false}",
+      "domains": [
+        "${DOMAIN}",
+        "*.${DOMAIN}"
+      ],
+      "renewal": {
+        "enabled": true,
+        "days_before_expiry": 30,
+        "check_interval": "twice_daily"
+      }
+    }
+  },
+  
+  "authentication": {
+    "_description": "Centralized authentication via Authentik SSO",
+    "authentik": {
+      "enabled": "${AUTHENTIK_ENABLED:-true}",
+      "domain": "auth.${DOMAIN}",
+      "admin": {
+        "email": "${AUTHENTIK_ADMIN_EMAIL:-${ADMIN_EMAIL}}"
+      },
+      "providers": {
+        "_description": "Authentication provider configuration",
+        "local_users": true,
+        "google": {
+          "enabled": "${GOOGLE_SSO_ENABLED:-false}",
+          "client_id": "${GOOGLE_CLIENT_ID}",
+          "client_secret": "${GOOGLE_CLIENT_SECRET}"
+        },
+        "github": {
+          "enabled": "${GITHUB_SSO_ENABLED:-false}",
+          "client_id": "${GITHUB_CLIENT_ID}",
+          "client_secret": "${GITHUB_CLIENT_SECRET}"
+        },
+        "ldap": {
+          "enabled": "${LDAP_ENABLED:-false}",
+          "server": "${LDAP_SERVER}",
+          "bind_dn": "${LDAP_BIND_DN}"
+        }
+      },
+      "mfa": {
+        "enabled": "${MFA_ENABLED:-true}",
+        "methods": [
+          "totp",
+          "static"
+        ]
+      }
+    }
+  },
+  
+  "monitoring": {
+    "_description": "Monitoring and alerting configuration",
+    "enabled": "${MONITORING_ENABLED:-true}",
+    "prometheus_retention": "${PROMETHEUS_RETENTION:-30d}",
+    "alerts": {
+      "discord": "${DISCORD_ALERTS_ENABLED:-true}",
+      "email": "${EMAIL_ALERTS_ENABLED:-true}",
+      "rules": {
+        "service_down": true,
+        "high_cpu": true,
+        "low_disk": true,
+        "cert_expiry": true
+      }
+    },
+    "_note": "Requires DISCORD_WEBHOOK for Discord notifications"
+  },
+  
+  "backups": {
+    "_description": "Automated backup configuration",
+    "enabled": "${BACKUPS_ENABLED:-true}",
+    "encryption": "${BACKUP_ENCRYPTION:-true}",
+    "schedules": {
+      "daily": "${BACKUP_DAILY_TIME:-2:00 AM}",
+      "weekly": "${BACKUP_WEEKLY_TIME:-3:00 AM Sunday}",
+      "monthly": "${BACKUP_MONTHLY_TIME:-4:00 AM 1st}"
+    },
+    "retention": {
+      "daily": "${BACKUP_RETENTION_DAILY:-7}",
+      "weekly": "${BACKUP_RETENTION_WEEKLY:-4}",
+      "monthly": "${BACKUP_RETENTION_MONTHLY:-12}"
+    },
+    "_note": "Requires BACKUP_ENCRYPTION_KEY if encryption is enabled"
+  },
+  
+  "defaults": {
+    "_description": "Default resource allocation for containers",
+    "cpu": "${DEFAULT_CPU:-1}",
+    "memory": "${DEFAULT_MEMORY:-512}",
+    "disk": "${DEFAULT_DISK:-8}",
+    "_units": {
+      "cpu": "cores",
+      "memory": "MB",
+      "disk": "GB"
+    }
+  },
+  
+  "dns": {
+    "_description": "DNS configuration for Pi-hole",
+    "upstream_servers": [
+      "${DNS_UPSTREAM_1:-1.1.1.1}",
+      "${DNS_UPSTREAM_2:-8.8.8.8}"
+    ],
+    "ad_blocking": "${DNS_AD_BLOCKING:-true}"
+  },
+  
+  "_secrets": {
+    "_description": "Required and optional secrets - DO NOT SET VALUES HERE",
+    "_note": "Set these in .env file or environment variables",
+    "required": [
+      "PROXMOX_TOKEN",
+      "CLOUDFLARE_API_TOKEN", 
+      "AUTHENTIK_ADMIN_PASSWORD",
+      "DOMAIN",
+      "ADMIN_EMAIL",
+      "PROXMOX_HOST",
+      "MANAGEMENT_SUBNET",
+      "MANAGEMENT_GATEWAY",
+      "NFS_SERVER"
+    ],
+    "optional": [
+      "CLOUDFLARE_TUNNEL_TOKEN",
+      "NORDVPN_PRIVATE_KEY",
+      "DISCORD_WEBHOOK",
+      "BACKUP_ENCRYPTION_KEY",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "GITHUB_CLIENT_ID",
+      "GITHUB_CLIENT_SECRET"
+    ]
+  }
+}

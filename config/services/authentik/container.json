@@ -1,0 +1,110 @@
+{
+  "_description": "Authentik SSO Service Container Configuration",
+  "_purpose": "Single Sign-On (SSO) and identity provider for all services",
+  "_features": ["OIDC", "SAML", "LDAP", "MFA", "user management", "OAuth providers"],
+  "_monitoring": ["Authentication metrics", "user activity", "security events"],
+  
+  "container": {
+    "id": 143,
+    "hostname": "authentik",
+    "ip": "10.0.0.43",
+    "resources": {
+      "cpu": 2,
+      "memory": 1024,
+      "disk": 15,
+      "_units": {
+        "memory": "MB",
+        "disk": "GB"
+      }
+    },
+    "features": [
+      "nesting=1"
+    ],
+    "nfs_mounts": [],
+    "_note": "Uses database for storage - no NFS mounts needed"
+  },
+  
+  "certificates": {
+    "domains": [
+      "auth.${DOMAIN}",
+      "authentik.${DOMAIN}"
+    ],
+    "_description": "SSL certificates for primary and alternative domains"
+  },
+  
+  "external_access": {
+    "cloudflare_tunnel": {
+      "enabled": true,
+      "subdomain": "auth"
+    },
+    "aliases": [
+      "authentik"
+    ],
+    "internal_access": {
+      "ports": [
+        {
+          "port": 9000,
+          "service": "authentik",
+          "path": "/"
+        },
+        {
+          "port": 9443,
+          "service": "authentik-ssl",
+          "path": "/"
+        }
+      ]
+    },
+    "_note": "Available as both auth.domain.com and authentik.domain.com"
+  },
+  
+  "service": {
+    "type": "authentication",
+    "category": "infrastructure",
+    "priority": 5,
+    "_priority_note": "Deploy last - after all services that need authentication",
+    "health_check": {
+      "enabled": true,
+      "endpoints": [
+        {
+          "service": "authentik",
+          "port": 9000,
+          "path": "/-/health/live/"
+        },
+        {
+          "service": "postgresql",
+          "port": 5432,
+          "method": "tcp"
+        },
+        {
+          "service": "redis",
+          "port": 6379,
+          "method": "tcp"
+        }
+      ],
+      "interval": 30
+    },
+    "monitoring": {
+      "enabled": true,
+      "metrics_port": 9300,
+      "dashboards": [
+        "authentik-overview",
+        "authentication-events"
+      ],
+      "_exporter": "Authentik metrics endpoint"
+    }
+  },
+  
+  "backup": {
+    "enabled": true,
+    "paths": [
+      "/opt/authentik/postgresql",
+      "/opt/authentik/media"
+    ],
+    "schedule": "daily",
+    "retention": "7d",
+    "_paths_description": {
+      "/opt/authentik/postgresql": "Database backups",
+      "/opt/authentik/media": "Uploaded files and certificates"
+    }
+  }
+}

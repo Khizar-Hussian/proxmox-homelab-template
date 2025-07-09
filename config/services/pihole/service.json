@@ -1,0 +1,70 @@
+{
+  "_description": "Pi-hole DNS Service Metadata",
+  "_format_version": "2.0.0",
+  
+  "service": {
+    "name": "pihole",
+    "display_name": "Pi-hole DNS",
+    "description": "Network-wide DNS server with ad-blocking capabilities",
+    "category": "infrastructure",
+    "subcategory": "dns",
+    "version": "latest",
+    "maintainer": "Pi-hole Team",
+    "documentation": "https://docs.pi-hole.net/",
+    "icon": "pihole.png",
+    "tags": ["dns", "adblock", "network", "security"]
+  },
+  
+  "dependencies": {
+    "required": [],
+    "optional": [],
+    "conflicts": [],
+    "_note": "Pi-hole has no dependencies and should be deployed first"
+  },
+  
+  "external_access": {
+    "enabled": true,
+    "subdomain": "pihole",
+    "public": false,
+    "authentication_required": true,
+    "description": "Pi-hole admin interface for DNS management"
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "metrics_available": true,
+    "dashboards": [
+      {
+        "name": "pihole-overview",
+        "description": "Pi-hole query statistics and blocking metrics"
+      },
+      {
+        "name": "dns-queries", 
+        "description": "DNS query logs and analysis"
+      }
+    ],
+    "alerts": [
+      {
+        "name": "dns_service_down",
+        "description": "Pi-hole DNS service is not responding"
+      },
+      {
+        "name": "high_blocked_queries",
+        "description": "Unusually high number of blocked queries"
+      }
+    ]
+  },
+  
+  "backup": {
+    "enabled": true,
+    "critical": true,
+    "description": "Pi-hole configuration and custom blocklists",
+    "restore_priority": "high"
+  },
+  
+  "security": {
+    "network_access": "internal",
+    "data_sensitivity": "medium",
+    "compliance_notes": "Stores DNS query logs - consider privacy implications"
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "_description": "VPN Gateway Service Metadata",
+  "_format_version": "2.0.0",
+  
+  "service": {
+    "name": "vpn-gateway",
+    "display_name": "VPN Gateway",
+    "description": "Centralized VPN gateway for routing traffic through secure tunnels",
+    "category": "infrastructure",
+    "subcategory": "networking",
+    "version": "latest",
+    "maintainer": "Homelab Team",
+    "documentation": "docs/services/vpn-gateway.md",
+    "icon": "vpn.png",
+    "tags": ["vpn", "privacy", "networking", "security"]
+  },
+  
+  "dependencies": {
+    "required": ["pihole"],
+    "optional": [],
+    "conflicts": [],
+    "_note": "Requires DNS resolution from Pi-hole"
+  },
+  
+  "external_access": {
+    "enabled": false,
+    "subdomain": null,
+    "public": false,
+    "authentication_required": false,
+    "description": "VPN gateway should not be externally accessible for security"
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "metrics_available": true,
+    "dashboards": [
+      {
+        "name": "vpn-overview",
+        "description": "VPN connection status and performance"
+      },
+      {
+        "name": "vpn-performance",
+        "description": "Bandwidth usage and connection quality"
+      }
+    ],
+    "alerts": [
+      {
+        "name": "vpn_connection_down",
+        "description": "VPN connection has been lost"
+      },
+      {
+        "name": "ip_leak_detected",
+        "description": "Potential IP leak detected"
+      }
+    ]
+  },
+  
+  "backup": {
+    "enabled": true,
+    "critical": false,
+    "description": "VPN configuration files and keys",
+    "restore_priority": "medium"
+  },
+  
+  "security": {
+    "network_access": "internal",
+    "data_sensitivity": "high",
+    "compliance_notes": "Contains VPN keys and configuration - secure storage required"
+  }
+}

@@ -5,7 +5,7 @@
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 #
 # 🚀 Main deployment orchestrator for Proxmox homelab infrastructure
-# 📖 Reads cluster.yaml and deploys entire infrastructure automatically
+# 📖 Reads cluster.json and deploys entire infrastructure automatically
 # 🔧 Modular design with separate scripts for each component
 #
 # Usage:
@@ -15,9 +15,9 @@
 #   ./scripts/deploy.sh --force            # Force redeploy everything
 #
 # Environment Variables:
-#   CLUSTER_CONFIG    - Path to cluster.yaml (default: config/cluster.yaml)
-#   DRY_RUN          - Set to 'true' for dry run mode
-#   VERBOSE          - Set to 'true' for verbose output
+#   CLUSTER_CONFIG_FILE - Path to cluster.json (default: config/cluster.json)
+#   DRY_RUN            - Set to 'true' for dry run mode
+#   VERBOSE            - Set to 'true' for verbose output
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
@@ -28,11 +28,15 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 readonly HELPERS_DIR="$SCRIPT_DIR/helpers"
-readonly CLUSTER_CONFIG="${CLUSTER_CONFIG:-$PROJECT_ROOT/config/cluster.yaml}"
+readonly LIB_DIR="$SCRIPT_DIR/lib"
+
+# Import new library functions
+source "$LIB_DIR/config.sh"              # Configuration management
+source "$LIB_DIR/validation.sh"          # JSON validation
+source "$LIB_DIR/service-discovery.sh"   # Service discovery
 
 # Import helper functions and modules
 source "$HELPERS_DIR/common.sh"          # Logging, colors, utilities
-source "$HELPERS_DIR/validation.sh"      # Configuration validation
 source "$HELPERS_DIR/prerequisites.sh"   # System prerequisites
 source "$HELPERS_DIR/networking.sh"      # Network setup
 source "$HELPERS_DIR/containers.sh"      # LXC container management
@@ -74,16 +78,18 @@ ${BOLD}EXAMPLES:${NC}
     $0 --dry-run --verbose      # Preview deployment with details
 
 ${BOLD}ENVIRONMENT VARIABLES:${NC}
-    CLUSTER_CONFIG    Path to cluster.yaml (default: config/cluster.yaml)
-    DRY_RUN          Set to 'true' for dry run mode
-    VERBOSE          Set to 'true' for verbose output
-    PROXMOX_HOST     Proxmox server IP
-    PROXMOX_TOKEN    Proxmox API token
+    CLUSTER_CONFIG_FILE Path to cluster.json (default: config/cluster.json)
+    DRY_RUN            Set to 'true' for dry run mode
+    VERBOSE            Set to 'true' for verbose output
+    PROXMOX_HOST       Proxmox server IP
+    PROXMOX_TOKEN      Proxmox API token
 
 ${BOLD}MODULAR COMPONENTS:${NC}
     This script orchestrates multiple helper scripts:
+    • lib/config.sh             - JSON configuration management
+    • lib/validation.sh         - Comprehensive validation
+    • lib/service-discovery.sh  - Service discovery and metadata
     • helpers/prerequisites.sh  - System requirements check
-    • helpers/validation.sh     - Configuration validation  
     • helpers/networking.sh     - Network bridge setup
     • helpers/containers.sh     - LXC container management
     • helpers/services.sh       - Service deployment
@@ -129,7 +135,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Export variables for helper scripts
-export DRY_RUN VERBOSE FORCE_DEPLOY CLUSTER_CONFIG PROJECT_ROOT
+export DRY_RUN VERBOSE FORCE_DEPLOY PROJECT_ROOT
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🚀 MAIN DEPLOYMENT ORCHESTRATION
@@ -140,13 +146,22 @@ main() {
     
     banner "🏠 PROXMOX HOMELAB DEPLOYMENT"
     
-    log "INFO" "Starting deployment with configuration: $CLUSTER_CONFIG"
+    # Initialize configuration system
+    if ! init_config; then
+        log "ERROR" "Failed to initialize configuration"
+        exit 1
+    fi
+    
+    log "INFO" "Starting deployment with JSON configuration"
     log "INFO" "Mode: $([ "$DRY_RUN" == "true" ] && echo "DRY RUN" || echo "LIVE DEPLOYMENT")"
+    
+    # Print configuration summary
+    print_config_summary
     
     # Phase 1: Prerequisites and Validation
     log "STEP" "Phase 1: Prerequisites and Validation"
     check_prerequisites || exit 1
-    validate_configuration || exit 1
+    run_comprehensive_validation || exit 1
     
     if [[ "$VALIDATE_ONLY" == "true" ]]; then
         log "SUCCESS" "Configuration validation completed successfully"
@@ -191,7 +206,7 @@ main() {
 # ══════════════════════════════════════════════════════════════════════════════
 
 show_deployment_summary() {
-    local domain=$(yq eval '.cluster.domain' "$CLUSTER_CONFIG")
+    local domain=$(get_config '.cluster.domain')
     
     echo -e "${BOLD}${GREEN}🎯 DEPLOYMENT SUMMARY${NC}"
     echo "════════════════════════════════════════════════════════════════"
@@ -209,9 +224,9 @@ show_deployment_summary() {
     echo "• Authentik:          admin@$domain / [from AUTHENTIK_ADMIN_PASSWORD]"
     echo
     echo -e "${BOLD}📊 Container Network:${NC}"
-    echo "• Management:         $(yq eval '.networks.management.subnet' "$CLUSTER_CONFIG")"
-    echo "• Containers:         $(yq eval '.networks.containers.subnet' "$CLUSTER_CONFIG")"
-    echo "• Core Services:      $(yq eval '.networks.core_services.pihole' "$CLUSTER_CONFIG")-$(yq eval '.networks.core_services.authentik' "$CLUSTER_CONFIG")"
+    echo "• Management:         $(get_config '.networking.management.subnet')"
+    echo "• Containers:         $(get_config '.networking.containers.subnet')"
+    echo "• Core Services:      10.0.0.40-10.0.0.49"
     echo
     echo -e "${BOLD}📝 Next Steps:${NC}"
     echo "1. Change default passwords for all services"

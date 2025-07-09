@@ -1,0 +1,80 @@
+{
+  "_description": "Nginx Proxy Manager Service Container Configuration",
+  "_purpose": "Reverse proxy with SSL termination and management GUI",
+  "_features": ["SSL certificates", "proxy hosts", "access lists", "streaming"],
+  "_monitoring": ["Proxy performance", "SSL certificate expiry", "request metrics"],
+  
+  "container": {
+    "id": 141,
+    "hostname": "nginx-proxy",
+    "ip": "10.0.0.41",
+    "resources": {
+      "cpu": 1,
+      "memory": 512,
+      "disk": 10,
+      "_units": {
+        "memory": "MB",
+        "disk": "GB"
+      }
+    },
+    "features": [
+      "nesting=1"
+    ],
+    "nfs_mounts": [],
+    "_note": "Stores data locally - no NFS mounts needed"
+  },
+  
+  "certificates": {
+    "domains": [
+      "proxy.${DOMAIN}"
+    ],
+    "_description": "SSL certificate for proxy manager admin interface"
+  },
+  
+  "external_access": {
+    "cloudflare_tunnel": {
+      "enabled": true,
+      "subdomain": "proxy"
+    },
+    "internal_access": {
+      "port": 81,
+      "path": "/",
+      "_note": "Admin interface on port 81"
+    }
+  },
+  
+  "service": {
+    "type": "proxy",
+    "category": "infrastructure",
+    "priority": 2,
+    "_priority_note": "Deploy after DNS",
+    "health_check": {
+      "enabled": true,
+      "endpoint": "/",
+      "port": 81,
+      "interval": 30
+    },
+    "monitoring": {
+      "enabled": true,
+      "metrics_port": 9113,
+      "dashboards": [
+        "nginx-overview",
+        "ssl-certificates"
+      ],
+      "_exporter": "Nginx exporter for Prometheus metrics"
+    }
+  },
+  
+  "backup": {
+    "enabled": true,
+    "paths": [
+      "/opt/nginx-proxy/data",
+      "/opt/nginx-proxy/letsencrypt"
+    ],
+    "schedule": "daily",
+    "_paths_description": {
+      "/opt/nginx-proxy/data": "NPM configuration and database",
+      "/opt/nginx-proxy/letsencrypt": "SSL certificates and keys"
+    }
+  }
+}
