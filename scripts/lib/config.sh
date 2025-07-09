@@ -47,6 +47,12 @@ load_secrets() {
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
         [[ "$line" =~ ^[[:space:]]*$ ]] && continue
         
+        # Trim whitespace and ensure proper format
+        line=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+        
+        # Skip if line doesn't contain =
+        [[ "$line" =~ = ]] || continue
+        
         # Export the variable
         export "$line"
     done < "$env_file"
@@ -107,8 +113,40 @@ load_cluster_config() {
     
     echo "📋 Loading cluster configuration..."
     
+    # Ensure all variables are available to envsubst by explicitly exporting them
+    # This addresses the issue where function-scoped exports might not be visible to subprocesses
+    set -a  # Automatically export all variables
+    
+    # Re-source the env file to ensure variables are available to subprocesses
+    if [[ -f "$ENV_FILE" ]]; then
+        source "$ENV_FILE"
+    fi
+    
+    # Set default values for optional variables that might not be in .env
+    export CLUSTER_NAME="${CLUSTER_NAME:-homelab}"
+    export TIMEZONE="${TIMEZONE:-America/New_York}"
+    export INTERNAL_DOMAIN="${INTERNAL_DOMAIN:-$DOMAIN}"
+    export VPN_ENABLED="${VPN_ENABLED:-true}"
+    
+    set +a  # Turn off automatic export
+    
     # Substitute environment variables in the JSON config
-    CLUSTER_CONFIG=$(envsubst < "$CLUSTER_CONFIG_FILE")
+    # Create a temporary file with bash-style defaults replaced by simple variables
+    local temp_config=$(mktemp)
+    
+    # Replace bash-style defaults with actual values
+    sed \
+        -e "s/\${CLUSTER_NAME:-homelab}/${CLUSTER_NAME}/g" \
+        -e "s/\${TIMEZONE:-America\/New_York}/${TIMEZONE//\//\\/}/g" \
+        -e "s/\${INTERNAL_DOMAIN:-\${DOMAIN}}/${INTERNAL_DOMAIN}/g" \
+        -e "s/\${VPN_ENABLED:-true}/${VPN_ENABLED}/g" \
+        "$CLUSTER_CONFIG_FILE" > "$temp_config"
+    
+    # Now use envsubst on the preprocessed file
+    CLUSTER_CONFIG=$(envsubst < "$temp_config")
+    
+    # Clean up
+    rm -f "$temp_config"
     
     # Validate JSON syntax
     if ! echo "$CLUSTER_CONFIG" | jq . >/dev/null 2>&1; then
@@ -224,7 +262,7 @@ print_config_summary() {
     echo "  NFS: $nfs"
     echo ""
     echo "🔧 Optional Features:"
-    echo "  VPN: $(feature_enabled '.security.vpn.enabled' 'NORDVPN_PRIVATE_KEY' && echo 'enabled' || echo 'disabled')"
+    echo "  VPN: $((feature_enabled '.security.vpn.enabled' && ([[ -n "${NORDVPN_PRIVATE_KEY:-}" ]] || [[ -n "${NORDVPN_USERNAME:-}" ]])) && echo 'enabled' || echo 'disabled')"
     echo "  Cloudflare Tunnel: $(feature_enabled '.external_access.cloudflare.enabled' 'CLOUDFLARE_TUNNEL_TOKEN' && echo 'enabled' || echo 'disabled')"
     echo "  Monitoring: $(feature_enabled '.monitoring.enabled' && echo 'enabled' || echo 'disabled')"
     echo "  Backups: $(feature_enabled '.backups.enabled' && echo 'enabled' || echo 'disabled')"
