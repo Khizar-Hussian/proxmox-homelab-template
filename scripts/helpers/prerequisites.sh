@@ -224,15 +224,18 @@ check_system_resources() {
 check_cluster_config() {
     log "INFO" "Checking cluster configuration..."
     
-    if [[ ! -f "$CLUSTER_CONFIG" ]]; then
-        log "ERROR" "Cluster configuration not found: $CLUSTER_CONFIG"
+    # Use the proper config file path
+    local config_file="${CLUSTER_CONFIG_FILE:-config/cluster.json}"
+    
+    if [[ ! -f "$config_file" ]]; then
+        log "ERROR" "Cluster configuration not found: $config_file"
         log "INFO" "Copy the example: cp .env.example .env"
         return 1
     fi
     
     # Basic JSON syntax check
-    if ! jq '.' "$CLUSTER_CONFIG" > /dev/null 2>&1; then
-        log "ERROR" "Invalid JSON syntax in $CLUSTER_CONFIG"
+    if ! jq '.' "$config_file" > /dev/null 2>&1; then
+        log "ERROR" "Invalid JSON syntax in $config_file"
         return 1
     fi
     

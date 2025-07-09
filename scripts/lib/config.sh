@@ -159,7 +159,7 @@ get_config_array() {
 # Check if a feature is enabled (returns true if secret exists and feature is enabled)
 feature_enabled() {
     local feature_path="$1"
-    local secret_name="$2"
+    local secret_name="${2:-}"
     
     # Check if feature is explicitly disabled
     local feature_value
@@ -171,7 +171,7 @@ feature_enabled() {
     
     # If secret name provided, check if secret exists
     if [[ -n "$secret_name" ]]; then
-        if [[ -z "${!secret_name}" ]]; then
+        if [[ -z "${!secret_name:-}" ]]; then
             return 1
         fi
     fi
