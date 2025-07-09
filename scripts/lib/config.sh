@@ -9,9 +9,11 @@
 # 🔧 FEATURES: Environment variable substitution, validation, caching
 
 # Configuration paths
-CONFIG_DIR="${CONFIG_DIR:-$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")/config}"
+LIB_SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+HOMELAB_ROOT="$(dirname "$(dirname "$LIB_SCRIPT_DIR")")"
+CONFIG_DIR="${CONFIG_DIR:-$HOMELAB_ROOT/config}"
 CLUSTER_CONFIG_FILE="${CONFIG_DIR}/cluster.json"
-ENV_FILE="${CONFIG_DIR}/../.env"
+ENV_FILE="${HOMELAB_ROOT}/.env"
 
 # Global variables
 CLUSTER_CONFIG=""
