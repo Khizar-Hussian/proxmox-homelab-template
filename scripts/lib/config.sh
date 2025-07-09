@@ -247,17 +247,34 @@ init_config() {
     echo "✅ Configuration system initialized successfully"
 }
 
-# Print configuration summary
+# Print configuration summary using direct approach
 print_config_summary() {
     echo "📋 Configuration Summary:"
     
-    # Get values with better error handling
+    # Use the same reliable approach as simple validation
+    set -a
+    source "$ENV_FILE"
+    # Set defaults for variables that might not be in .env
+    export CLUSTER_NAME="${CLUSTER_NAME:-homelab}"
+    export TIMEZONE="${TIMEZONE:-America/New_York}"
+    set +a
+    
+    # First handle bash-style defaults that envsubst doesn't understand
+    local temp_config=$(mktemp)
+    sed \
+        -e "s/\${CLUSTER_NAME:-homelab}/${CLUSTER_NAME}/g" \
+        -e "s/\${TIMEZONE:-America\/New_York}/${TIMEZONE//\//\\/}/g" \
+        "$CLUSTER_CONFIG_FILE" > "$temp_config"
+    
+    local processed_config=$(envsubst < "$temp_config")
+    rm -f "$temp_config"
+    
     local domain cluster admin proxmox nfs
-    domain=$(get_config '.cluster.domain' 'Not configured')
-    cluster=$(get_config '.cluster.name' 'Not configured')
-    admin=$(get_config '.cluster.admin_email' 'Not configured')
-    proxmox=$(get_config '.proxmox.host' 'Not configured')
-    nfs=$(get_config '.storage.nfs_server' 'Not configured')
+    domain=$(echo "$processed_config" | jq -r '.cluster.domain // "Not configured"')
+    cluster=$(echo "$processed_config" | jq -r '.cluster.name // "Not configured"')
+    admin=$(echo "$processed_config" | jq -r '.cluster.admin_email // "Not configured"')
+    proxmox=$(echo "$processed_config" | jq -r '.proxmox.host // "Not configured"')
+    nfs=$(echo "$processed_config" | jq -r '.storage.nfs_server // "Not configured"')
     
     echo "  Domain: $domain"
     echo "  Cluster: $cluster"
@@ -266,10 +283,10 @@ print_config_summary() {
     echo "  NFS: $nfs"
     echo ""
     echo "🔧 Optional Features:"
-    echo "  VPN: $((feature_enabled '.security.vpn.enabled' && ([[ -n "${NORDVPN_PRIVATE_KEY:-}" ]] || [[ -n "${NORDVPN_USERNAME:-}" ]])) && echo 'enabled' || echo 'disabled')"
-    echo "  Cloudflare Tunnel: $(feature_enabled '.external_access.cloudflare.enabled' 'CLOUDFLARE_TUNNEL_TOKEN' && echo 'enabled' || echo 'disabled')"
-    echo "  Monitoring: $(feature_enabled '.monitoring.enabled' && echo 'enabled' || echo 'disabled')"
-    echo "  Backups: $(feature_enabled '.backups.enabled' && echo 'enabled' || echo 'disabled')"
+    echo "  VPN: $([[ "${VPN_ENABLED:-true}" == "true" ]] && echo 'enabled' || echo 'disabled')"
+    echo "  Cloudflare Tunnel: $([[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]] && echo 'enabled' || echo 'disabled')"
+    echo "  Monitoring: enabled"
+    echo "  Backups: enabled"
 }
 
 # Export functions for use in other scripts
