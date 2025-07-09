@@ -15,6 +15,7 @@ check_prerequisites() {
     check_permissions || return 1
     check_required_commands || return 1
     check_environment_variables || return 1
+    check_proxmox_connectivity || return 1
     check_system_resources || return 1
     check_cluster_config || return 1
     
@@ -24,12 +25,21 @@ check_prerequisites() {
 check_permissions() {
     log "INFO" "Checking permissions..."
     
+    # Check if we're running in remote mode (deploying to Proxmox from laptop)
+    if [[ -n "${PROXMOX_HOST:-}" && "${PROXMOX_HOST}" != "127.0.0.1" && "${PROXMOX_HOST}" != "localhost" ]]; then
+        log "INFO" "Remote deployment mode detected - root access not required locally"
+        log "DEBUG" "Will connect to Proxmox host: ${PROXMOX_HOST}"
+        return 0
+    fi
+    
+    # For local deployment, check root access
     if has_root_access; then
         log "DEBUG" "Root access confirmed"
         return 0
     else
-        log "ERROR" "This script requires root access or sudo privileges"
+        log "ERROR" "This script requires root access or sudo privileges for local deployment"
         log "INFO" "Run with: sudo ./scripts/deploy.sh"
+        log "INFO" "Or set PROXMOX_HOST in .env for remote deployment"
         return 1
     fi
 }
@@ -37,14 +47,18 @@ check_permissions() {
 check_required_commands() {
     log "INFO" "Checking required commands..."
     
+    # Commands required on local machine (laptop/control node)
     local required_commands=(
-        "curl"          # HTTP requests
+        "curl"          # HTTP requests for Proxmox API
         "jq"            # JSON processing
-        "yq"            # YAML processing
-        "pvesh"         # Proxmox API
-        "pct"           # LXC container management
-        "docker"        # Docker engine
         "openssl"       # Password generation
+        "ssh"           # SSH connectivity
+        "envsubst"      # Environment variable substitution
+    )
+    
+    # Commands that are optional or will be installed if missing
+    local optional_commands=(
+        "yq"            # YAML processing (can be installed)
     )
     
     local missing_commands=()
@@ -92,9 +106,10 @@ show_installation_help() {
         echo "  systemctl enable --now docker"
     fi
     
-    # Proxmox tools
-    if [[ " ${missing[*]} " =~ " pvesh " ]] || [[ " ${missing[*]} " =~ " pct " ]]; then
-        log "WARN" "Proxmox tools missing - ensure you're running on Proxmox host"
+    # envsubst (usually part of gettext)
+    if [[ " ${missing[*]} " =~ " envsubst " ]]; then
+        echo "  # Install envsubst (environment variable substitution):"
+        echo "  apt update && apt install -y gettext-base"
     fi
     
     echo
@@ -139,6 +154,46 @@ check_environment_variables() {
     fi
     
     log "SUCCESS" "Environment variables configured"
+}
+
+check_proxmox_connectivity() {
+    log "INFO" "Checking Proxmox connectivity..."
+    
+    # Extract host and port from PROXMOX_HOST
+    local host="${PROXMOX_HOST}"
+    local port="${PROXMOX_API_PORT:-8006}"
+    
+    # Test basic connectivity
+    log "DEBUG" "Testing connectivity to ${host}:${port}..."
+    if ! timeout 10 bash -c "cat < /dev/null > /dev/tcp/${host}/${port}" 2>/dev/null; then
+        log "ERROR" "Cannot connect to Proxmox host ${host}:${port}"
+        log "INFO" "Check your network connection and PROXMOX_HOST setting"
+        return 1
+    fi
+    
+    # Test Proxmox API with authentication
+    log "DEBUG" "Testing Proxmox API authentication..."
+    local api_url="https://${host}:${port}/api2/json/version"
+    local response
+    
+    response=$(curl -s -k -H "Authorization: PVEAPIToken=${PROXMOX_TOKEN}" "${api_url}" 2>/dev/null)
+    
+    if [[ $? -ne 0 ]]; then
+        log "ERROR" "Failed to connect to Proxmox API"
+        log "INFO" "Check your PROXMOX_TOKEN and network connectivity"
+        return 1
+    fi
+    
+    # Check if response contains version info
+    if echo "$response" | jq -e '.data.version' >/dev/null 2>&1; then
+        local version=$(echo "$response" | jq -r '.data.version')
+        log "SUCCESS" "Connected to Proxmox VE ${version}"
+        return 0
+    else
+        log "ERROR" "Proxmox API authentication failed"
+        log "INFO" "Check your PROXMOX_TOKEN - it should be in format: user@pam!token_name=uuid"
+        return 1
+    fi
 }
 
 check_system_resources() {
