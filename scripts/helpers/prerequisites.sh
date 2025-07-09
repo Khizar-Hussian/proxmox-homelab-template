@@ -187,6 +187,6 @@ check_cluster_config() {
 # Allow running this script standalone for testing
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.json}"
-    PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
+    PREREQUISITES_PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
     check_prerequisites
 fi

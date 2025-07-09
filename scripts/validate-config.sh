@@ -11,9 +11,9 @@
 set -euo pipefail
 
 # Script setup
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$SCRIPT_DIR/lib"
-HELPERS_DIR="$SCRIPT_DIR/helpers"
+VALIDATE_CONFIG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$VALIDATE_CONFIG_SCRIPT_DIR/lib"
+HELPERS_DIR="$VALIDATE_CONFIG_SCRIPT_DIR/helpers"
 
 # Source libraries
 source "$LIB_DIR/config.sh"

@@ -9,8 +9,8 @@
 # 🔧 FEATURES: Service enumeration, dependency resolution, metadata access
 
 # Source configuration library
-SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-source "$SCRIPT_DIR/config.sh"
+SERVICE_DISCOVERY_SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+source "$SERVICE_DISCOVERY_SCRIPT_DIR/config.sh"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 📋 SERVICE ENUMERATION

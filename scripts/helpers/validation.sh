@@ -8,8 +8,8 @@
 # ✅ Uses comprehensive validation from lib/validation.sh
 
 # Get script directory
-SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+HELPERS_VALIDATION_SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+LIB_DIR="$(dirname "$HELPERS_VALIDATION_SCRIPT_DIR")/lib"
 
 # Source common functions
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"

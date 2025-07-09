@@ -556,6 +556,6 @@ generate_password() {
 # Allow running this script standalone
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.yaml}"
-    PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
+    SERVICES_PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
     deploy_user_services
 fi

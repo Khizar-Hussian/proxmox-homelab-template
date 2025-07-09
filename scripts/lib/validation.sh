@@ -9,8 +9,8 @@
 # 🔧 FEATURES: JSON validation, network validation, service validation
 
 # Source configuration library
-SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-source "$SCRIPT_DIR/config.sh"
+VALIDATION_SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+source "$VALIDATION_SCRIPT_DIR/config.sh"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 📋 JSON VALIDATION

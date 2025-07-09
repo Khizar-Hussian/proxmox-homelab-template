@@ -469,6 +469,6 @@ container_pull() {
 # Allow running this script standalone
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.yaml}"
-    PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
+    CONTAINERS_PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
     deploy_core_infrastructure
 fi
