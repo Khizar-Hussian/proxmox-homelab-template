@@ -38,10 +38,16 @@ services:
     environment:
       # VPN Provider Configuration
       VPN_SERVICE_PROVIDER: ${VPN_PROVIDER:-nordvpn}
-      VPN_TYPE: ${VPN_TYPE:-wireguard}
+      VPN_TYPE: ${VPN_PROTOCOL:-wireguard}
       
-      # NordVPN Configuration
+      # NordVPN WireGuard Configuration
       WIREGUARD_PRIVATE_KEY: ${NORDVPN_PRIVATE_KEY:-}
+      
+      # NordVPN OpenVPN Configuration
+      OPENVPN_USER: ${NORDVPN_USERNAME:-}
+      OPENVPN_PASSWORD: ${NORDVPN_PASSWORD:-}
+      
+      # NordVPN Common Configuration
       NORDVPN_CATEGORY: ${NORDVPN_CATEGORY:-legacy_p2p}
       SERVER_COUNTRIES: ${VPN_COUNTRIES:-Netherlands,Switzerland}
       
@@ -53,9 +59,8 @@ services:
       EXPRESSVPN_USER: ${EXPRESSVPN_USER:-}
       EXPRESSVPN_PASSWORD: ${EXPRESSVPN_PASSWORD:-}
       
-      # OpenVPN Configuration (fallback)
-      OPENVPN_USER: ${VPN_USERNAME:-}
-      OPENVPN_PASSWORD: ${VPN_PASSWORD:-}
+      # Generic OpenVPN Configuration (for other providers)
+      OPENVPN_CUSTOM_CONFIG: ${OPENVPN_CUSTOM_CONFIG:-}
       
       # Security Configuration
       FIREWALL: on

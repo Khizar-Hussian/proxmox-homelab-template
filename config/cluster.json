@@ -99,11 +99,27 @@
       "enabled": "${VPN_ENABLED:-true}",
       "provider": "${VPN_PROVIDER:-nordvpn}",
       "protocol": "${VPN_PROTOCOL:-openvpn}",
-      "country": "${VPN_COUNTRY:-United States}",
+      "countries": "${VPN_COUNTRIES:-United States,Canada,Netherlands}",
       "routed_services": [
         "qbittorrent"
       ],
-      "_note": "Requires VPN provider credentials in secrets"
+      "authentication": {
+        "_description": "VPN authentication method (depends on provider and protocol)",
+        "openvpn": {
+          "username": "${NORDVPN_USERNAME}",
+          "password": "${NORDVPN_PASSWORD}"
+        },
+        "wireguard": {
+          "private_key": "${NORDVPN_PRIVATE_KEY}"
+        }
+      },
+      "security": {
+        "kill_switch": "${VPN_KILL_SWITCH:-true}",
+        "dns_leak_protection": "${VPN_DNS_LEAK_PROTECTION:-true}",
+        "firewall": "${VPN_FIREWALL_ENABLED:-true}",
+        "auto_reconnect": "${VPN_AUTO_RECONNECT:-true}"
+      },
+      "_note": "Requires VPN provider credentials in secrets - supports both OpenVPN and WireGuard"
     }
   },
   

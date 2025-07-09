@@ -260,6 +260,158 @@ validate_all_services() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 🔒 VPN CONFIGURATION VALIDATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Validate VPN configuration
+validate_vpn_config() {
+    echo "🔒 Validating VPN configuration..."
+    
+    local vpn_enabled
+    vpn_enabled=$(get_config '.security.vpn.enabled' 'false')
+    
+    if [[ "$vpn_enabled" != "true" ]]; then
+        echo "ℹ️  VPN is disabled, skipping VPN validation"
+        return 0
+    fi
+    
+    local errors=0
+    
+    # Validate VPN provider
+    local vpn_provider
+    vpn_provider=$(get_config '.security.vpn.provider' 'nordvpn')
+    
+    if [[ ! "$vpn_provider" =~ ^(nordvpn|surfshark|expressvpn|protonvpn|custom)$ ]]; then
+        echo "❌ Invalid VPN provider: $vpn_provider" >&2
+        ((errors++))
+    fi
+    
+    # Validate VPN protocol
+    local vpn_protocol
+    vpn_protocol=$(get_config '.security.vpn.protocol' 'openvpn')
+    
+    if [[ ! "$vpn_protocol" =~ ^(openvpn|wireguard)$ ]]; then
+        echo "❌ Invalid VPN protocol: $vpn_protocol" >&2
+        ((errors++))
+    fi
+    
+    # Validate credentials based on provider and protocol
+    if ! validate_vpn_credentials "$vpn_provider" "$vpn_protocol"; then
+        ((errors++))
+    fi
+    
+    # Validate VPN countries
+    if ! validate_vpn_countries "$vpn_provider"; then
+        ((errors++))
+    fi
+    
+    if [[ $errors -eq 0 ]]; then
+        echo "✅ VPN configuration is valid"
+        return 0
+    else
+        echo "❌ Found $errors VPN configuration errors" >&2
+        return 1
+    fi
+}
+
+# Validate VPN credentials
+validate_vpn_credentials() {
+    local provider="$1"
+    local protocol="$2"
+    
+    echo "🔑 Validating VPN credentials for $provider ($protocol)..."
+    
+    case "$provider" in
+        "nordvpn")
+            case "$protocol" in
+                "openvpn")
+                    if [[ -z "${NORDVPN_USERNAME:-}" ]]; then
+                        echo "❌ NORDVPN_USERNAME is required for NordVPN OpenVPN" >&2
+                        return 1
+                    fi
+                    if [[ -z "${NORDVPN_PASSWORD:-}" ]]; then
+                        echo "❌ NORDVPN_PASSWORD is required for NordVPN OpenVPN" >&2
+                        return 1
+                    fi
+                    echo "✅ NordVPN OpenVPN credentials are present"
+                    ;;
+                "wireguard")
+                    if [[ -z "${NORDVPN_PRIVATE_KEY:-}" ]]; then
+                        echo "❌ NORDVPN_PRIVATE_KEY is required for NordVPN WireGuard" >&2
+                        return 1
+                    fi
+                    # Validate WireGuard private key format
+                    if [[ ! "${NORDVPN_PRIVATE_KEY:-}" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
+                        echo "❌ NORDVPN_PRIVATE_KEY appears to be invalid format" >&2
+                        return 1
+                    fi
+                    echo "✅ NordVPN WireGuard private key is present and valid format"
+                    ;;
+            esac
+            ;;
+        "surfshark")
+            if [[ -z "${SURFSHARK_USER:-}" ]]; then
+                echo "❌ SURFSHARK_USER is required for Surfshark" >&2
+                return 1
+            fi
+            if [[ -z "${SURFSHARK_PASSWORD:-}" ]]; then
+                echo "❌ SURFSHARK_PASSWORD is required for Surfshark" >&2
+                return 1
+            fi
+            echo "✅ Surfshark credentials are present"
+            ;;
+        "expressvpn")
+            if [[ -z "${EXPRESSVPN_USER:-}" ]]; then
+                echo "❌ EXPRESSVPN_USER is required for ExpressVPN" >&2
+                return 1
+            fi
+            if [[ -z "${EXPRESSVPN_PASSWORD:-}" ]]; then
+                echo "❌ EXPRESSVPN_PASSWORD is required for ExpressVPN" >&2
+                return 1
+            fi
+            echo "✅ ExpressVPN credentials are present"
+            ;;
+        *)
+            echo "⚠️  Skipping credential validation for provider: $provider"
+            ;;
+    esac
+    
+    return 0
+}
+
+# Validate VPN countries
+validate_vpn_countries() {
+    local provider="$1"
+    local countries="${VPN_COUNTRIES:-}"
+    
+    if [[ -z "$countries" ]]; then
+        echo "❌ VPN_COUNTRIES is required when VPN is enabled" >&2
+        return 1
+    fi
+    
+    # Split countries by comma and validate each
+    IFS=',' read -ra COUNTRY_ARRAY <<< "$countries"
+    for country in "${COUNTRY_ARRAY[@]}"; do
+        # Trim whitespace
+        country=$(echo "$country" | xargs)
+        
+        # Basic validation - not empty and reasonable length
+        if [[ -z "$country" ]]; then
+            echo "❌ Empty country name in VPN_COUNTRIES" >&2
+            return 1
+        fi
+        
+        if [[ ${#country} -lt 2 || ${#country} -gt 50 ]]; then
+            echo "❌ Invalid country name length: $country" >&2
+            return 1
+        fi
+    done
+    
+    echo "✅ VPN countries configuration is valid: $countries"
+    return 0
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 🔍 DOCKER COMPOSE VALIDATION
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -311,7 +463,14 @@ run_comprehensive_validation() {
     
     echo ""
     
-    # 3. Validate service configurations
+    # 3. Validate VPN configuration
+    if ! validate_vpn_config; then
+        ((errors++))
+    fi
+    
+    echo ""
+    
+    # 4. Validate service configurations
     if ! validate_all_services; then
         ((errors++))
     fi
@@ -329,4 +488,4 @@ run_comprehensive_validation() {
 }
 
 # Export functions for use in other scripts
-export -f validate_json_file validate_all_configs validate_ip validate_subnet test_connectivity validate_network_config validate_service_config validate_all_services validate_docker_compose run_comprehensive_validation
+export -f validate_json_file validate_all_configs validate_ip validate_subnet test_connectivity validate_network_config validate_service_config validate_all_services validate_vpn_config validate_vpn_credentials validate_vpn_countries validate_docker_compose run_comprehensive_validation
