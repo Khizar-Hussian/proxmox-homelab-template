@@ -88,7 +88,7 @@ generate_password() {
 get_config() {
     local path="$1"
     local default_value="${2:-}"
-    local config_file="${CLUSTER_CONFIG:-config/cluster.yaml}"
+    local config_file="${CLUSTER_CONFIG:-config/cluster.json}"
     
     if [[ -f "$config_file" ]]; then
         # Note: This function is deprecated - use get_config() from lib/config.sh instead

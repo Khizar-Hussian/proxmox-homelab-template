@@ -230,9 +230,9 @@ check_cluster_config() {
         return 1
     fi
     
-    # Basic YAML syntax check
-    if ! yq eval '.' "$CLUSTER_CONFIG" > /dev/null 2>&1; then
-        log "ERROR" "Invalid YAML syntax in $CLUSTER_CONFIG"
+    # Basic JSON syntax check
+    if ! jq '.' "$CLUSTER_CONFIG" > /dev/null 2>&1; then
+        log "ERROR" "Invalid JSON syntax in $CLUSTER_CONFIG"
         return 1
     fi
     

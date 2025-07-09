@@ -781,7 +781,7 @@ cleanup_deployment_resources() {
 
 # Allow running this script standalone
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.yaml}"
+    CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.json}"
     DEPLOYMENT_PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
     
     case "${1:-validate}" in

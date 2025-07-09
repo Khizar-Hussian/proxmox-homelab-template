@@ -301,7 +301,7 @@ test_proxy_connectivity() {
 
 # Allow running this script standalone
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.yaml}"
+    CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.json}"
     DNS_PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
     configure_dns_and_proxy
 fi

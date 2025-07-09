@@ -506,7 +506,7 @@ backup_monitoring_config() {
 
 # Allow running this script standalone
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.yaml}"
+    CLUSTER_CONFIG="${CLUSTER_CONFIG:-config/cluster.json}"
     MONITORING_PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
     setup_monitoring_stack
 fi
