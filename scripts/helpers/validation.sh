@@ -9,13 +9,13 @@
 
 # Get script directory
 HELPERS_VALIDATION_SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-LIB_DIR="$(dirname "$HELPERS_VALIDATION_SCRIPT_DIR")/lib"
+VALIDATION_LIB_DIR="$(dirname "$HELPERS_VALIDATION_SCRIPT_DIR")/lib"
 
 # Source common functions
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # Source new validation library
-source "$LIB_DIR/validation.sh"
+source "$VALIDATION_LIB_DIR/validation.sh"
 
 validate_configuration() {
     log "STEP" "Validating JSON configuration..."

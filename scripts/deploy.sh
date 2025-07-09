@@ -44,6 +44,7 @@ source "$HELPERS_DIR/services.sh"        # Service deployment (now handles ALL s
 source "$HELPERS_DIR/monitoring.sh"      # Monitoring setup
 source "$HELPERS_DIR/dns.sh"             # DNS configuration
 source "$HELPERS_DIR/notifications.sh"   # Notification system
+source "$HELPERS_DIR/validation.sh"      # Configuration validation
 source "$HELPERS_DIR/deployment.sh"      # Validation and cleanup
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -161,7 +162,13 @@ main() {
     # Phase 1: Prerequisites and Validation
     log "STEP" "Phase 1: Prerequisites and Validation"
     check_prerequisites || exit 1
-    run_comprehensive_validation || exit 1
+    
+    # Use simple, direct validation
+    log "INFO" "Running configuration validation..."
+    if ! "$SCRIPT_DIR/simple-validate.sh"; then
+        log "ERROR" "Configuration validation failed"
+        exit 1
+    fi
     
     if [[ "$VALIDATE_ONLY" == "true" ]]; then
         log "SUCCESS" "Configuration validation completed successfully"

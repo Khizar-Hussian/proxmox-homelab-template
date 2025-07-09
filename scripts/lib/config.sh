@@ -128,6 +128,10 @@ load_cluster_config() {
     export INTERNAL_DOMAIN="${INTERNAL_DOMAIN:-$DOMAIN}"
     export VPN_ENABLED="${VPN_ENABLED:-true}"
     
+    # Explicitly export all required variables to ensure they're available to envsubst
+    export DOMAIN ADMIN_EMAIL PROXMOX_HOST MANAGEMENT_SUBNET MANAGEMENT_GATEWAY NFS_SERVER
+    export PROXMOX_TOKEN CLOUDFLARE_API_TOKEN AUTHENTIK_ADMIN_PASSWORD
+    
     set +a  # Turn off automatic export
     
     # Substitute environment variables in the JSON config

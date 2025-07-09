@@ -145,6 +145,15 @@ test_connectivity() {
 validate_network_config() {
     echo "🌐 Validating network configuration..."
     
+    # Debug: Check if CLUSTER_CONFIG is available
+    if [[ -z "$CLUSTER_CONFIG" ]]; then
+        echo "❌ DEBUG: CLUSTER_CONFIG is empty, attempting to reload..." >&2
+        if ! load_cluster_config; then
+            echo "❌ DEBUG: Failed to reload cluster configuration" >&2
+            return 1
+        fi
+    fi
+    
     local management_subnet management_gateway proxmox_host nfs_server
     management_subnet=$(get_config '.networking.management.subnet')
     management_gateway=$(get_config '.networking.management.gateway')
