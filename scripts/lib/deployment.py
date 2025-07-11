@@ -215,7 +215,7 @@ class ProxmoxDeployer:
                 'cores': container_config.get('cpu_cores', 1),
                 'memory': container_config.get('memory_mb', 512),
                 'rootfs': f"local-lvm:{container_config.get('disk_gb', 8)}",
-                'net0': f"name=eth0,bridge=vmbr0,ip={ip_address}/24,gw={self.config.network.management_gateway}",
+                'net0': f"name=eth0,bridge=vmbr0,ip={ip_address}/24,gw=10.0.0.1",
                 'nameserver': "8.8.8.8,8.8.4.4",
                 'searchdomain': self.config.cluster.domain,
                 'features': self._get_safe_features(container_config),
@@ -309,9 +309,14 @@ class ProxmoxDeployer:
                 console.print(f"Debug failed: {e}")
             
             # Try to fix DNS and network
-            console.print("🔧 Fixing DNS configuration...")
+            console.print("🔧 Fixing network configuration...")
             self._execute_in_container(container_id, "echo 'nameserver 8.8.8.8' > /etc/resolv.conf")
             self._execute_in_container(container_id, "echo 'nameserver 8.8.4.4' >> /etc/resolv.conf")
+            
+            # Fix routing - the container is on 10.0.0.0/24 but gateway is wrong
+            console.print("🔧 Fixing routing table...")
+            self._execute_in_container(container_id, "ip route del default || true")
+            self._execute_in_container(container_id, "ip route add default via 192.168.0.1 dev eth0")
             
             # Test again
             try:
