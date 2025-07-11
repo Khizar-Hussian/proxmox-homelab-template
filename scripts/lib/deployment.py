@@ -215,8 +215,8 @@ class ProxmoxDeployer:
                 'cores': container_config.get('cpu_cores', 1),
                 'memory': container_config.get('memory_mb', 512),
                 'rootfs': f"local-lvm:{container_config.get('disk_gb', 8)}",
-                'net0': f"name=eth0,bridge={self.config.network.container_bridge},ip={ip_address}/24,gw={self.config.network.container_gateway}",
-                'nameserver': self.config.network.container_gateway,
+                'net0': f"name=eth0,bridge=vmbr0,ip={ip_address}/24,gw={self.config.network.management_gateway}",
+                'nameserver': "8.8.8.8,8.8.4.4",
                 'searchdomain': self.config.cluster.domain,
                 'features': self._get_safe_features(container_config),
                 'unprivileged': 1,
@@ -296,10 +296,32 @@ class ProxmoxDeployer:
             console.print("✅ Network connectivity OK")
         except:
             console.print("❌ Network connectivity failed")
-            # Try to fix DNS
+            # Debug network configuration
+            console.print("🔍 Checking network configuration...")
+            try:
+                ip_result = self._execute_in_container(container_id, "ip addr show")
+                console.print(f"IP configuration: {ip_result}")
+                route_result = self._execute_in_container(container_id, "ip route show")
+                console.print(f"Route table: {route_result}")
+                dns_result = self._execute_in_container(container_id, "cat /etc/resolv.conf")
+                console.print(f"DNS config: {dns_result}")
+            except Exception as e:
+                console.print(f"Debug failed: {e}")
+            
+            # Try to fix DNS and network
             console.print("🔧 Fixing DNS configuration...")
             self._execute_in_container(container_id, "echo 'nameserver 8.8.8.8' > /etc/resolv.conf")
             self._execute_in_container(container_id, "echo 'nameserver 8.8.4.4' >> /etc/resolv.conf")
+            
+            # Test again
+            try:
+                self._execute_in_container(container_id, "ping -c 1 8.8.8.8")
+                console.print("✅ Network connectivity restored")
+            except:
+                console.print("❌ Network still not working - using local sources")
+                # Try using local Ubuntu repositories
+                self._execute_in_container(container_id, "sed -i 's/archive.ubuntu.com/mirror.enzu.com/g' /etc/apt/sources.list")
+                self._execute_in_container(container_id, "sed -i 's/security.ubuntu.com/mirror.enzu.com/g' /etc/apt/sources.list")
         
         commands = [
             ("locale-gen en_US.UTF-8", "Generating locales"),
