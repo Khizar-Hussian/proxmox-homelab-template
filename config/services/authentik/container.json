@@ -5,9 +5,9 @@
   "_monitoring": ["Authentication metrics", "user activity", "security events"],
   
   "container": {
-    "id": 143,
+    "id": 146,
     "hostname": "authentik",
-    "ip": "10.0.0.43",
+    "ip": "10.0.0.46",
     "resources": {
       "cpu": 2,
       "memory": 1024,

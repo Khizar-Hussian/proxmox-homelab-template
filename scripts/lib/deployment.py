@@ -148,10 +148,32 @@ class ProxmoxDeployer:
             
             # Load container configuration
             with open(service_files['container'], 'r') as f:
-                container_config = json.load(f)
+                container_config_raw = json.load(f)
+            
+            # Handle nested container structure
+            if 'container' in container_config_raw:
+                container_config = container_config_raw['container']
+                # Map nested structure to flat structure expected by deployment code
+                flat_config = {
+                    'container_id': container_config['id'],
+                    'hostname': container_config['hostname'],
+                    'ip_address': container_config['ip'],
+                    'cpu_cores': container_config['resources']['cpu'],
+                    'memory_mb': container_config['resources']['memory'],
+                    'disk_gb': container_config['resources']['disk'],
+                    'features': container_config.get('features', [])
+                }
+                
+                # Add mounts if present
+                if 'nfs_mounts' in container_config and container_config['nfs_mounts']:
+                    flat_config['mounts'] = container_config['nfs_mounts']
+                    
+            else:
+                # Assume flat structure
+                flat_config = container_config_raw
             
             # Create LXC container
-            container_id = self._create_container(service_info, container_config, verbose)
+            container_id = self._create_container(service_info, flat_config, verbose)
             
             # Wait for container to be ready
             self._wait_for_container_ready(container_id)
@@ -203,7 +225,7 @@ class ProxmoxDeployer:
             }
             
             # Add NFS mounts if specified
-            if 'mounts' in container_config:
+            if 'mounts' in container_config and container_config['mounts']:
                 for i, mount in enumerate(container_config['mounts']):
                     mount_point = f"mp{i}"
                     mount_config = f"{mount['source']},{mount['target']}"

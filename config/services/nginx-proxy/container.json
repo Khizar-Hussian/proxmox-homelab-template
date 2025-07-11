@@ -5,9 +5,9 @@
   "_monitoring": ["Proxy performance", "SSL certificate expiry", "request metrics"],
   
   "container": {
-    "id": 141,
+    "id": 143,
     "hostname": "nginx-proxy",
-    "ip": "10.0.0.41",
+    "ip": "10.0.0.43",
     "resources": {
       "cpu": 1,
       "memory": 512,

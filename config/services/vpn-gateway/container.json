@@ -5,9 +5,9 @@
   "_monitoring": ["VPN connection status", "IP leak detection", "bandwidth usage"],
   
   "container": {
-    "id": 139,
+    "id": 142,
     "hostname": "vpn-gateway",
-    "ip": "10.0.0.39",
+    "ip": "10.0.0.42",
     "resources": {
       "cpu": 1,
       "memory": 256,

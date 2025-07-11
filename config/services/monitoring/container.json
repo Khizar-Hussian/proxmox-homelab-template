@@ -5,9 +5,9 @@
   "_monitoring": ["Self-monitoring with health checks", "performance metrics"],
   
   "container": {
-    "id": 142,
+    "id": 145,
     "hostname": "monitoring",
-    "ip": "10.0.0.42",
+    "ip": "10.0.0.45",
     "resources": {
       "cpu": 2,
       "memory": 2048,
