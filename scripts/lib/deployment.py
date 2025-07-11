@@ -217,7 +217,7 @@ class ProxmoxDeployer:
                 'net0': f"name=eth0,bridge={self.config.network.container_bridge},ip={ip_address}/24,gw={self.config.network.container_gateway}",
                 'nameserver': self.config.network.container_gateway,
                 'searchdomain': self.config.cluster.domain,
-                'features': 'nesting=1,keyctl=1',
+                'features': self._get_safe_features(container_config),
                 'unprivileged': 1,
                 'onboot': 1,
                 'startup': 'order=1',
@@ -369,6 +369,23 @@ class ProxmoxDeployer:
                 time.sleep(1)
         
         raise ProxmoxDeploymentError(f"Task {task_id} timeout after {timeout} seconds")
+    
+    def _get_safe_features(self, container_config: Dict) -> str:
+        """Get safe feature flags that don't require root privileges"""
+        safe_features = []
+        
+        # Always enable nesting for Docker
+        safe_features.append('nesting=1')
+        
+        # Only add other features if they're safe
+        if 'features' in container_config:
+            for feature in container_config['features']:
+                if feature == 'nesting=1':
+                    continue  # Already added
+                # Add other safe features here in the future
+                # For now, skip keyctl and other root-only features
+                
+        return ','.join(safe_features)
     
     def _get_node_name(self) -> str:
         """Get the Proxmox node name"""
