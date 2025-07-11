@@ -282,6 +282,8 @@ class ProxmoxDeployer:
         console.print(f"🐳 Installing Docker in container {container_id}")
         
         commands = [
+            ("locale-gen en_US.UTF-8", "Generating locales"),
+            ("update-locale LANG=en_US.UTF-8", "Setting system locale"),
             ("apt-get update", "Updating package lists"),
             ("apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release", "Installing prerequisites"),
             ("curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg", "Adding Docker GPG key"),
@@ -301,9 +303,13 @@ class ProxmoxDeployer:
     def _execute_in_container(self, container_id: int, command: str):
         """Execute command in container using subprocess"""
         try:
+            # Set environment variables for locale
+            env_setup = "export DEBIAN_FRONTEND=noninteractive LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8"
+            full_command = f"{env_setup} && {command}"
+            
             # Use pct exec directly since the API exec method is not implemented in proxmoxer
             result = subprocess.run(
-                ['pct', 'exec', str(container_id), '--', 'bash', '-c', command],
+                ['pct', 'exec', str(container_id), '--', 'bash', '-c', full_command],
                 capture_output=True,
                 text=True,
                 timeout=300  # 5 minute timeout
