@@ -1,6 +1,6 @@
 # 📦 Service Management Guide
 
-This guide covers how to add, configure, update, and manage services in your homelab.
+This guide covers how to add, configure, update, and manage services in your modern Python-based homelab.
 
 ## 🎯 Service Architecture
 
@@ -8,18 +8,20 @@ This guide covers how to add, configure, update, and manage services in your hom
 
 - **Core Services** - Auto-deployed infrastructure (Pi-hole, Nginx, etc.)
 - **User Services** - Optional services you add (Nextcloud, Jellyfin, etc.)
-
-Both use the same **YAML + Docker Compose** pattern for consistency.
+- **Service Discovery** - Automatic detection from directory structure
 
 ### Service Structure
 
-Every service requires two files:
+Every service requires **three files** for automatic discovery:
 
 ```
 config/services/service-name/
-├── container.yaml          # LXC container configuration
-└── docker-compose.yml      # Service definition
+├── container.json           # LXC container configuration
+├── service.json            # Service metadata and dependencies
+└── docker-compose.yaml     # Docker Compose service definition
 ```
+
+**Automatic discovery** - Just create the directory with these files!
 
 ## 🚀 Adding a New Service
 
@@ -27,46 +29,45 @@ config/services/service-name/
 
 ```bash
 # Create directory for your service
-mkdir -p config/services/nextcloud
-cd config/services/nextcloud
+mkdir config/services/nextcloud
 ```
 
 ### Step 2: Container Configuration
 
-Create `container.yaml`:
+Create `container.json`:
 
-```yaml
----
-container:
-  id: 150                    # Unique container ID (100+)
-  hostname: "nextcloud"      # Container hostname
-  ip: "10.0.0.60"           # Container IP address
-  
-  resources:
-    cpu: 2                   # CPU cores
-    memory: 2048            # RAM in MB
-    disk: 20                # Disk space in GB
-    
-  # Optional: NFS storage mounts
-  nfs_mounts:
-    - source: "/mnt/tank/nextcloud"
-      target: "/data"
-      
-# Optional: SSL certificate domains
-certificates:
-  domains:
-    - "nextcloud.yourdomain.com"
-    
-# Optional: External access configuration
-external_access:
-  cloudflare_tunnel:
-    enabled: true
-    subdomain: "nextcloud"
+```json
+{
+  "container_id": 150,
+  "hostname": "nextcloud",
+  "ip_address": "10.0.0.60",
+  "cpu_cores": 2,
+  "memory_mb": 2048,
+  "disk_gb": 20
+}
 ```
 
-### Step 3: Docker Compose Configuration
+### Step 3: Service Metadata
 
-Create `docker-compose.yml`:
+Create `service.json`:
+
+```json
+{
+  "service": {
+    "name": "nextcloud",
+    "description": "File sharing and collaboration platform",
+    "category": "productivity"
+  },
+  "dependencies": {
+    "required": ["pihole", "nginx-proxy"],
+    "optional": ["authentik"]
+  }
+}
+```
+
+### Step 4: Docker Compose Configuration
+
+Create `docker-compose.yaml`:
 
 ```yaml
 version: '3.8'
@@ -82,13 +83,16 @@ services:
       
     environment:
       - MYSQL_HOST=db
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE={{ mysql_database | default('nextcloud') }}
+      - MYSQL_USER={{ mysql_user | default('nextcloud') }}
+      - MYSQL_PASSWORD={{ mysql_password }}
+      - TRUSTED_DOMAINS={{ domain }}
+      - OVERWRITEPROTOCOL=https
+      - OVERWRITEHOST=nextcloud.{{ domain }}
       
     volumes:
       - nextcloud-data:/var/www/html
-      - /data/nextcloud:/var/www/html/data
+      - /opt/appdata/nextcloud:/var/www/html/data
       
     depends_on:
       - db
@@ -99,10 +103,10 @@ services:
     restart: unless-stopped
     
     environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - MYSQL_USER=${MYSQL_USER}  
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD={{ mysql_root_password }}
+      - MYSQL_DATABASE={{ mysql_database | default('nextcloud') }}
+      - MYSQL_USER={{ mysql_user | default('nextcloud') }}
+      - MYSQL_PASSWORD={{ mysql_password }}
       
     volumes:
       - mysql-data:/var/lib/mysql
@@ -112,40 +116,54 @@ volumes:
   mysql-data:
 ```
 
-### Step 4: Deploy the Service
+### Step 5: Deploy the Service
 
 ```bash
-# Add files to git
-git add config/services/nextcloud/
-
-# Commit and deploy
-git commit -m "feat: add Nextcloud file sharing service"
+# Service is automatically discovered!
+python scripts/deploy.py list-services
 
 # Deploy the new service
-sudo ./scripts/deploy.sh --services-only
+python scripts/deploy.py deploy --services nextcloud
 
-# Or for GitOps deployment:
-git push origin main  # Automatically deploys via GitHub Actions
+# Or deploy all services
+python scripts/deploy.py deploy
 ```
+
+**That's it!** The service is automatically discovered and can be deployed immediately.
 
 ## 📋 Service Examples
 
 ### Simple Web Application
 
-```yaml
-# container.yaml
-container:
-  id: 151
-  hostname: "uptime-kuma"
-  ip: "10.0.0.61"
-  resources:
-    cpu: 1
-    memory: 512
-    disk: 5
+**`container.json`**:
+```json
+{
+  "container_id": 151,
+  "hostname": "uptime-kuma",
+  "ip_address": "10.0.0.61",
+  "cpu_cores": 1,
+  "memory_mb": 512,
+  "disk_gb": 5
+}
 ```
 
+**`service.json`**:
+```json
+{
+  "service": {
+    "name": "uptime-kuma",
+    "description": "Uptime monitoring dashboard",
+    "category": "monitoring"
+  },
+  "dependencies": {
+    "required": ["pihole"],
+    "optional": ["nginx-proxy"]
+  }
+}
+```
+
+**`docker-compose.yaml`**:
 ```yaml
-# docker-compose.yml
 version: '3.8'
 services:
   uptime-kuma:
@@ -161,25 +179,37 @@ volumes:
   uptime-data:
 ```
 
-### Media Server with NFS Storage
+### Media Server
 
-```yaml
-# container.yaml
-container:
-  id: 152
-  hostname: "jellyfin"
-  ip: "10.0.0.62"
-  resources:
-    cpu: 4
-    memory: 4096
-    disk: 10
-  nfs_mounts:
-    - source: "/mnt/tank/media"
-      target: "/media"
+**`container.json`**:
+```json
+{
+  "container_id": 152,
+  "hostname": "jellyfin",
+  "ip_address": "10.0.0.70",
+  "cpu_cores": 4,
+  "memory_mb": 4096,
+  "disk_gb": 20
+}
 ```
 
+**`service.json`**:
+```json
+{
+  "service": {
+    "name": "jellyfin",
+    "description": "Media streaming server",
+    "category": "media"
+  },
+  "dependencies": {
+    "required": ["pihole", "nginx-proxy"],
+    "optional": ["authentik"]
+  }
+}
+```
+
+**`docker-compose.yaml`**:
 ```yaml
-# docker-compose.yml
 version: '3.8'
 services:
   jellyfin:
@@ -190,9 +220,9 @@ services:
       - "8096:8096"
     volumes:
       - jellyfin-config:/config
-      - /media:/media:ro
+      - /mnt/media:/media:ro  # NFS mount from host
     environment:
-      - JELLYFIN_PublishedServerUrl=https://jellyfin.${DOMAIN}
+      - JELLYFIN_PublishedServerUrl=https://jellyfin.{{ domain }}
 
 volumes:
   jellyfin-config:
@@ -200,25 +230,37 @@ volumes:
 
 ### Download Client with VPN
 
-Services that need privacy (torrents, usenet) can route through the VPN gateway:
+Services that need privacy automatically use the VPN gateway:
 
-```yaml
-# container.yaml
-container:
-  id: 153
-  hostname: "qbittorrent"
-  ip: "10.0.0.11"  # Download services use 10-19 range
-  resources:
-    cpu: 2
-    memory: 1024
-    disk: 10
-  nfs_mounts:
-    - source: "/mnt/tank/downloads"
-      target: "/downloads"
+**`container.json`**:
+```json
+{
+  "container_id": 153,
+  "hostname": "qbittorrent",
+  "ip_address": "10.0.0.13",
+  "cpu_cores": 2,
+  "memory_mb": 1024,
+  "disk_gb": 10
+}
 ```
 
+**`service.json`**:
+```json
+{
+  "service": {
+    "name": "qbittorrent",
+    "description": "BitTorrent client with VPN privacy",
+    "category": "media"
+  },
+  "dependencies": {
+    "required": ["vpn-gateway"],
+    "optional": ["prowlarr"]
+  }
+}
+```
+
+**`docker-compose.yaml`**:
 ```yaml
-# docker-compose.yml
 version: '3.8'
 services:
   qbittorrent:
@@ -226,135 +268,143 @@ services:
     container_name: qbittorrent
     restart: unless-stopped
     
-    # Route through VPN gateway for privacy
-    network_mode: "container:vpn-gateway"
-    
     environment:
       - PUID=1000
       - PGID=1000
-      - TZ=${TZ:-UTC}
+      - TZ={{ timezone | default('UTC') }}
       - WEBUI_PORT=8080
       
     volumes:
       - qb-config:/config
-      - /downloads:/downloads
+      - /mnt/downloads:/downloads  # NFS mount from host
       
-    # Note: No ports section needed - uses VPN gateway ports
+    ports:
+      - "8080:8080"
+      
+    # VPN routing handled by network configuration
     
 volumes:
   qb-config:
-    
-networks:
-  # External network access through VPN container
-  external:
-    name: vpn-gateway_default
 ```
 
 ## 🔧 Service Management
 
+### List All Services
+
+```bash
+# List discovered services
+python scripts/deploy.py list-services
+
+# List with detailed information
+python scripts/deploy.py list-services --details
+```
+
+### Deploy Services
+
+```bash
+# Deploy all auto-deploy services
+python scripts/deploy.py deploy
+
+# Deploy specific services
+python scripts/deploy.py deploy --services nextcloud,jellyfin
+
+# Test deployment without making changes
+python scripts/deploy.py deploy --dry-run
+```
+
 ### Update a Service
 
 ```bash
-# Update docker-compose.yml
-nano config/services/nextcloud/docker-compose.yml
+# Edit service configuration
+nano config/services/nextcloud/docker-compose.yaml
 
-# Deploy changes
-sudo ./scripts/deploy.sh --services-only
-
-# Or update specific service
-sudo ./scripts/update-service.sh nextcloud
+# Redeploy the service
+python scripts/deploy.py deploy --services nextcloud
 ```
 
 ### Remove a Service
 
 ```bash
-# Stop and remove containers
-sudo ./scripts/remove-service.sh nextcloud
-
-# Remove configuration
+# Remove service directory
 rm -rf config/services/nextcloud/
 
-# Commit changes
-git add -A
-git commit -m "remove: Nextcloud service"
+# Service is automatically removed from discovery
+python scripts/deploy.py list-services
 ```
 
-### Service Logs
+### Service Status
 
 ```bash
+# Check container status
+pct status 150
+
 # View service logs
-sudo ./scripts/logs.sh nextcloud
-
-# Follow logs in real-time
-sudo ./scripts/logs.sh nextcloud --follow
-
-# View specific container logs
 pct exec 150 -- docker logs nextcloud
-```
 
-### Service Health
-
-```bash
-# Check all services
-sudo ./scripts/health-check.sh
-
-# Check specific service
-sudo ./scripts/health-check.sh nextcloud
-
-# View service status
+# Check all containers in service
 pct exec 150 -- docker ps
 ```
 
 ## 📊 Service Configuration Reference
 
-### Container Configuration Options
+### Container Configuration (`container.json`)
 
-```yaml
-container:
-  id: 150                      # Required: Unique container ID
-  hostname: "service-name"     # Required: Container hostname
-  ip: "10.0.0.60"             # Required: Container IP address
+```json
+{
+  "container_id": 150,        // Required: Unique container ID
+  "hostname": "service-name", // Required: Container hostname
+  "ip_address": "10.0.0.60",  // Required: Container IP address
   
-  resources:                   # Optional: Resource allocation
-    cpu: 2                     # CPU cores (default: 1)
-    memory: 2048              # RAM in MB (default: 512)
-    disk: 20                  # Disk space in GB (default: 8)
-    
-  features:                   # Optional: LXC features
-    - "nesting=1"             # Enable Docker nesting
-    - "keyctl=1"              # Enable keyctl
-    
-  nfs_mounts:                 # Optional: NFS storage mounts
-    - source: "/path/on/nas"  # NFS server path
-      target: "/path/in/container"  # Container mount point
-      options: "rw,hard,intr" # Optional: Mount options
-      
-certificates:               # Optional: SSL certificates
-  domains:
-    - "service.yourdomain.com"
-    
-external_access:           # Optional: External access
-  cloudflare_tunnel:
-    enabled: true           # Enable Cloudflare tunnel
-    subdomain: "service"    # Subdomain for external access
-    
-service:                    # Optional: Service metadata
-  type: "media"             # Service category
-  category: "entertainment" # Service category
-  priority: 10              # Deployment priority (lower = earlier)
+  "cpu_cores": 2,             // Optional: CPU cores (default: 1)
+  "memory_mb": 2048,          // Optional: RAM in MB (default: 512)
+  "disk_gb": 20,              // Optional: Disk space in GB (default: 8)
   
-  health_check:             # Optional: Health check configuration
-    enabled: true
-    endpoint: "/health"     # Health check endpoint
-    port: 80               # Health check port
-    interval: 30           # Check interval in seconds
-    
-backup:                    # Optional: Backup configuration
-  enabled: true
-  paths:
-    - "/config"            # Paths to backup
-    - "/data"
-  schedule: "daily"        # Backup schedule
+  "features": [               // Optional: LXC features
+    "nesting=1",              // Enable Docker nesting
+    "keyctl=1"                // Enable keyctl
+  ],
+  
+  "mounts": [                 // Optional: Additional mounts
+    {
+      "source": "/mnt/media",  // Host path
+      "target": "/media",      // Container path
+      "readonly": true         // Mount as read-only
+    }
+  ]
+}
+```
+
+### Service Metadata (`service.json`)
+
+```json
+{
+  "service": {
+    "name": "service-name",            // Required: Service name
+    "description": "Service description", // Optional: Description
+    "category": "media",               // Optional: Category
+    "subcategory": "streaming",       // Optional: Subcategory
+    "tags": ["media", "streaming"]    // Optional: Tags
+  },
+  
+  "dependencies": {
+    "required": ["pihole", "nginx-proxy"], // Required services
+    "optional": ["authentik"],            // Optional services
+    "conflicts": []                       // Conflicting services
+  },
+  
+  "external_access": {          // Optional: External access config
+    "enabled": true,           // Enable external access
+    "subdomain": "service",    // Subdomain for access
+    "public": false,           // Public vs private access
+    "authentication_required": true // Require authentication
+  },
+  
+  "monitoring": {              // Optional: Monitoring config
+    "enabled": true,           // Enable monitoring
+    "metrics_available": true, // Metrics endpoint available
+    "port": 9090              // Metrics port
+  }
+}
 ```
 
 ### Docker Compose Best Practices
@@ -366,39 +416,29 @@ services:
   app:
     image: app:latest
     container_name: app-name
-    hostname: app.${DOMAIN:-homelab.local}
+    hostname: app.{{ domain }}
     restart: unless-stopped
     
     ports:
-      - "80:80"            # Port mapping
+      - "80:80"                    # Port mapping
       
     environment:
-      # Use environment variables for secrets
-      - DB_PASSWORD=${MYSQL_PASSWORD}
-      - API_KEY=${API_KEY}
-      - TZ=${TZ:-UTC}
+      # Use Jinja2 template variables
+      - DB_PASSWORD={{ mysql_password }}
+      - API_KEY={{ api_key }}
+      - TZ={{ timezone | default('UTC') }}
+      - DOMAIN={{ domain }}
       
     volumes:
       # Use named volumes for data
       - app-data:/data
       
-      # Use bind mounts for configuration
-      - ./config:/config:ro
+      # Use host paths for persistent config
+      - /opt/appdata/app:/config
       
       # Use NFS mounts for shared storage
-      - /shared/media:/media:ro
+      - /mnt/media:/media:ro
       
-    networks:
-      - app-network
-      
-    # Resource limits
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
-          
     # Health check
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
@@ -406,46 +446,59 @@ services:
       timeout: 10s
       retries: 3
       
-    # Labels for management
+    # Labels for service management
     labels:
-      - "com.homelab.service=app-name"
-      - "com.homelab.category=productivity"
+      - "homelab.service=app-name"
+      - "homelab.category=productivity"
+      - "homelab.url=https://app.{{ domain }}"
 
 volumes:
   app-data:
     driver: local
-
-networks:
-  app-network:
-    driver: bridge
 ```
 
+**Template Variables Available:**
+- `{{ domain }}` - Your domain name
+- `{{ admin_email }}` - Admin email address
+- `{{ timezone }}` - System timezone
+- Any environment variable from `.env`
+- Service-specific configuration
+
 ## 🎯 IP Address Allocation
+
+### Network Segmentation Strategy
+
+**Management Network**: `192.168.1.0/24` (your home network)
+- Proxmox host, NFS server, your devices
+
+**Container Network**: `10.0.0.0/24` (isolated container network)
+- All services run in this isolated network
 
 ### Recommended IP Ranges
 
 | Range | Purpose | Examples |
 |-------|---------|----------|
-| `10.0.0.10-19` | Download services | qBittorrent, SABnzbd |
-| `10.0.0.20-29` | Development | GitLab, code-server |
-| `10.0.0.30-39` | Utilities | Uptime Kuma, Portainer |
-| `10.0.0.40-49` | Core infrastructure | Pi-hole, Nginx, Grafana |
-| `10.0.0.50-59` | Home automation | Home Assistant, ESPHome |
-| `10.0.0.60-69` | Productivity | Nextcloud, Vaultwarden |
-| `10.0.0.70-79` | Media services | Jellyfin, Photoprism |
-| `10.0.0.80-89` | Arr stack | Sonarr, Radarr, Prowlarr |
-| `10.0.0.90-99` | Communication | Matrix, Discord bots |
+| `10.0.0.10-19` | Media downloads | qBittorrent, SABnzbd, Prowlarr |
+| `10.0.0.20-29` | Development | GitLab, Code Server, Jenkins |
+| `10.0.0.30-39` | Utilities | Uptime Kuma, Portainer, Watchtower |
+| `10.0.0.40-49` | **Core infrastructure** | Pi-hole (.41), VPN (.42), Nginx (.43), Homepage (.44), Grafana (.45), Authentik (.46) |
+| `10.0.0.50-59` | Home automation | Home Assistant, ESPHome, Zigbee2MQTT |
+| `10.0.0.60-69` | Productivity | Nextcloud, Vaultwarden, Paperless |
+| `10.0.0.70-79` | Media services | Jellyfin, Photoprism, Immich |
+| `10.0.0.80-89` | Arr stack | Sonarr, Radarr, Lidarr, Bazarr |
+| `10.0.0.90-99` | Communication | Matrix, Discord bots, Email |
 | `10.0.0.100+` | Custom services | Your experimental services |
 
 ### Container ID Convention
 
-Container IDs should match the last octet of the IP address + 100:
-- IP `10.0.0.60` → Container ID `160`
-- IP `10.0.0.75` → Container ID `175`
+Container IDs should be unique and **not** follow IP addressing:
+- Use sequential IDs starting from 100
+- Core services: 100-119
+- User services: 120+
 
 ## 🔐 Security Best Practices
 
-### Environment Variables
+### Template Variables (Secure)
 
 **❌ Never hardcode secrets:**
 ```yaml
@@ -453,11 +506,20 @@ environment:
   - MYSQL_PASSWORD=hardcoded123  # Bad!
 ```
 
-**✅ Use environment variables:**
+**✅ Use Jinja2 template variables:**
 ```yaml
 environment:
-  - MYSQL_PASSWORD=${MYSQL_PASSWORD}  # Good!
+  - MYSQL_PASSWORD={{ mysql_password }}  # Good!
+  - API_KEY={{ cloudflare_api_token }}   # Template variables
 ```
+
+### Network Security
+
+**✅ Automatic network isolation:**
+- Services run in isolated `10.0.0.0/24` network
+- No direct access to management network
+- DNS filtered through Pi-hole
+- VPN routing for download services
 
 ### Container Security
 
@@ -472,89 +534,130 @@ cap_add:
   - CHOWN
   - SETGID
 
-# Make filesystem read-only
-read_only: true
-tmpfs:
-  - /tmp
-  - /var/run
-
 # Security options
 security_opt:
   - no-new-privileges:true
+
+# Resource limits
+deploy:
+  resources:
+    limits:
+      memory: 512M
+      cpus: '1.0'
 ```
 
-### Network Security
+### Service Security
 
 ```yaml
-# Use custom networks
-networks:
-  - app-internal    # Internal-only network
-  - homelab        # External access network
-
-# Expose only necessary ports
+# Bind to localhost only when needed
 ports:
-  - "127.0.0.1:8080:80"  # Bind to localhost only
+  - "127.0.0.1:8080:80"
+  
+# Use read-only mounts when possible
+volumes:
+  - /mnt/media:/media:ro
+  
+# Environment-specific secrets
+environment:
+  - SECRET_KEY={{ secret_key }}  # From .env file
 ```
 
-## 📦 Popular Service Examples
+## 📦 Service Categories
+
+### Core Infrastructure (Auto-deployed)
+
+- **Pi-hole** (10.0.0.41) - DNS + Ad blocking
+- **VPN Gateway** (10.0.0.42) - Privacy tunnel for downloads
+- **Nginx Proxy** (10.0.0.43) - Reverse proxy + SSL certificates
+- **Homepage** (10.0.0.44) - Service dashboard
+- **Grafana** (10.0.0.45) - Monitoring dashboards
+- **Authentik** (10.0.0.46) - Single sign-on authentication
+
+### Media Services
+
+- **Jellyfin** - Media streaming server
+- **Photoprism** - Photo management and sharing
+- **Immich** - Google Photos alternative
+- **Navidrome** - Music streaming server
 
 ### Productivity Suite
 
-- **[Nextcloud](../examples/nextcloud.md)** - File sharing and collaboration
-- **[Vaultwarden](../examples/vaultwarden.md)** - Password manager
-- **[Paperless-ngx](../examples/paperless.md)** - Document management
-- **[Standard Notes](../examples/standard-notes.md)** - Note taking
+- **Nextcloud** - File sharing and collaboration
+- **Vaultwarden** - Password manager (Bitwarden compatible)
+- **Paperless-ngx** - Document management
+- **Standard Notes** - Note taking application
 
-### Media Stack
+### Download Stack (VPN-routed)
 
-- **[Jellyfin](../examples/jellyfin.md)** - Media server
-- **[Photoprism](../examples/photoprism.md)** - Photo management
-- **[Immich](../examples/immich.md)** - Google Photos alternative
-- **[Navidrome](../examples/navidrome.md)** - Music streaming
-
-### Download Stack
-
-- **[qBittorrent](../examples/qbittorrent.md)** - Torrent client with VPN
-- **[SABnzbd](../examples/sabnzbd.md)** - Usenet client
-- **[Prowlarr](../examples/prowlarr.md)** - Indexer manager
-- **[Arr Stack](../examples/arr-stack.md)** - Sonarr, Radarr, etc.
+- **qBittorrent** - Torrent client with web UI
+- **SABnzbd** - Usenet downloader
+- **Prowlarr** - Indexer manager for Arr stack
+- **Sonarr/Radarr/Lidarr** - Media collection managers
 
 ### Home Automation
 
-- **[Home Assistant](../examples/home-assistant.md)** - Home automation hub
-- **[ESPHome](../examples/esphome.md)** - ESP device management
-- **[Zigbee2MQTT](../examples/zigbee2mqtt.md)** - Zigbee bridge
-- **[Node-RED](../examples/node-red.md)** - Flow-based automation
+- **Home Assistant** - Smart home hub
+- **ESPHome** - ESP device management
+- **Zigbee2MQTT** - Zigbee device bridge
+- **Node-RED** - Flow-based automation
+
+### Development Tools
+
+- **GitLab** - Git repository and CI/CD
+- **Code Server** - VS Code in the browser
+- **Jenkins** - Continuous integration
+- **Portainer** - Docker container management
 
 ## 🔧 Troubleshooting Services
 
-### Common Issues
+### Configuration Issues
+
+**Service not discovered:**
+```bash
+# Check service structure
+python scripts/deploy.py list-services --details
+
+# Verify required files exist
+ls config/services/service-name/
+# Should show: container.json, service.json, docker-compose.yaml
+```
+
+**Validation failures:**
+```bash
+# Run comprehensive validation
+python scripts/deploy.py validate-only
+
+# Python provides clear error messages with line numbers
+```
+
+### Service Issues
 
 **Service won't start:**
 ```bash
 # Check container status
 pct status 150
 
-# Check Docker containers
+# View container creation logs
+pct config 150
+
+# Check Docker containers inside
 pct exec 150 -- docker ps -a
 
 # View service logs
 pct exec 150 -- docker logs service-name
-
-# Check resource usage
-pct exec 150 -- docker stats
 ```
 
-**Network connectivity issues:**
+**Network connectivity:**
 ```bash
 # Test container network
 pct exec 150 -- ping 8.8.8.8
+pct exec 150 -- ping 10.0.0.41  # Pi-hole
 
-# Check port binding
-pct exec 150 -- netstat -tlnp
-
-# Test service endpoint
+# Check service endpoint
 curl -I http://10.0.0.60:80
+
+# Test from host
+telnet 10.0.0.60 80
 ```
 
 **Storage issues:**
@@ -562,28 +665,43 @@ curl -I http://10.0.0.60:80
 # Check disk space
 pct exec 150 -- df -h
 
-# Check NFS mounts
-pct exec 150 -- mount | grep nfs
+# Check mount points
+pct exec 150 -- mount | grep "/mnt"
 
-# Test NFS connectivity
-pct exec 150 -- ls -la /data
+# Test NFS from container
+pct exec 150 -- ls -la /mnt/media
 ```
 
 ### Service Recovery
 
 **Restart service:**
 ```bash
+# Restart container
+pct restart 150
+
+# Or restart just Docker services
 pct exec 150 -- docker compose restart
 ```
 
-**Rebuild service:**
+**Redeploy service:**
 ```bash
-pct exec 150 -- docker compose down
-pct exec 150 -- docker compose pull
-pct exec 150 -- docker compose up -d
+# Redeploy with Python CLI
+python scripts/deploy.py deploy --services service-name
+
+# This will recreate the container and deploy fresh
 ```
 
-**Reset service data:**
+**Full service reset:**
+```bash
+# Stop and remove container
+pct stop 150
+pct destroy 150
+
+# Redeploy from scratch
+python scripts/deploy.py deploy --services service-name
+```
+
+**Reset service data only:**
 ```bash
 # Stop service
 pct exec 150 -- docker compose down
@@ -591,49 +709,67 @@ pct exec 150 -- docker compose down
 # Remove volumes (careful!)
 pct exec 150 -- docker volume rm service_data
 
-# Redeploy
+# Restart service
 pct exec 150 -- docker compose up -d
 ```
 
 ## 🚀 Advanced Service Features
 
-### Service Dependencies
+### Automatic Dependency Resolution
+
+The Python system automatically handles dependencies:
+
+```json
+// In service.json
+{
+  "dependencies": {
+    "required": ["pihole", "nginx-proxy"],
+    "optional": ["authentik"]
+  }
+}
+```
+
+**Automatic deployment order:**
+1. Pi-hole (no dependencies)
+2. Nginx Proxy (depends on Pi-hole)
+3. Your service (depends on both)
+
+### Service Discovery Features
+
+```bash
+# List services by category
+python scripts/deploy.py list-services --details
+
+# Deploy by category
+python scripts/deploy.py deploy --services $(python scripts/deploy.py list-services | grep media)
+
+# Validate dependency chain
+python scripts/deploy.py validate-only
+```
+
+### Template Processing
+
+Services can use **Jinja2 templates** for dynamic configuration:
 
 ```yaml
-# In cluster.yaml
+# In docker-compose.yaml
 services:
-  deploy_order:
-    - "pihole"        # DNS first
-    - "nginx-proxy"   # Proxy second
-    - "database"      # Database before apps
-    - "nextcloud"     # App that needs database
+  app:
+    environment:
+      - DATABASE_URL=postgres://{{ postgres_user }}:{{ postgres_password }}@db:5432/{{ postgres_db }}
+      - REDIS_URL=redis://redis:6379/{{ redis_db | default('0') }}
+      - DOMAIN={{ domain }}
 ```
 
-### Service Monitoring
+### Service Categories
 
-```yaml
-# Enable monitoring for service
-service:
-  monitoring:
-    enabled: true
-    metrics_port: 9090
-    dashboards:
-      - "nextcloud-overview"
-```
-
-### Service Backups
-
-```yaml
-# Configure automatic backups
-backup:
-  enabled: true
-  paths:
-    - "/config"
-    - "/data"
-  schedule: "daily"
-  retention: "7d"
-```
+Services are automatically organized by category from `service.json`:
+- **infrastructure** - Core services (DNS, proxy, monitoring)
+- **media** - Media servers and download clients
+- **productivity** - Office and collaboration tools
+- **automation** - Home automation and IoT
+- **development** - Development tools and CI/CD
 
 ---
 
-📖 **[← Installation Guide](installation.md)** | **[Configuration Reference →](configuration.md)**
+📖 **[← Installation Guide](installation.md)** | **[Configuration Reference →](configuration.md)** | **[CLI Reference →](cli-reference.md)**

@@ -1,254 +1,376 @@
-# Configuration Guide
+# ⚙️ Configuration Reference
 
-This guide explains how to configure your Proxmox homelab using the JSON-based configuration system.
+This guide explains how to configure your modern Python-based Proxmox homelab.
 
-## Configuration Overview
+## 🎯 Configuration Overview
 
-The homelab uses a modern JSON-based configuration system with two main components:
+The homelab uses a modern Python-based configuration system with type-safe validation:
 
-1. **`.env`** - Contains secrets and environment-specific values
-2. **`config/cluster.json`** - Contains the main configuration with inline documentation
+- **`.env`** - Environment secrets and deployment settings
+- **Pydantic models** - Type-safe configuration with automatic validation
+- **Service discovery** - Automatic detection of services from directories
+- **Template engine** - Jinja2 for reliable variable substitution
 
-## Getting Started
+## 🚀 Getting Started
 
-### 1. Create Your Environment File
+### 1. Environment Configuration
 
 ```bash
+# Copy the example configuration
 cp .env.example .env
+
+# Edit with your values
 nano .env
 ```
 
 ### 2. Required Configuration
 
-Fill in these required variables in your `.env` file:
+Fill in these **required** variables in your `.env` file:
 
 ```bash
-# Domain and admin settings
+# Domain and administration
 DOMAIN=yourdomain.com
 ADMIN_EMAIL=admin@yourdomain.com
 
-# Proxmox connection
-PROXMOX_HOST=192.168.1.10
-PROXMOX_TOKEN=root@pam!homelab=your-api-token
-
-# Network configuration
+# Network configuration (management network)
 MANAGEMENT_SUBNET=192.168.1.0/24
 MANAGEMENT_GATEWAY=192.168.1.1
 
-# Storage
-NFS_SERVER=192.168.1.20
+# Proxmox server details
+PROXMOX_HOST=192.168.1.100
+PROXMOX_TOKEN=root@pam!homelab-deploy=your-proxmox-api-token
 
-# Authentication
+# Storage configuration
+NFS_SERVER=192.168.1.200
+
+# Authentication and security
 AUTHENTIK_ADMIN_PASSWORD=your-secure-password
-
-# SSL certificates
-CLOUDFLARE_API_TOKEN=your-cloudflare-token
+CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
 ```
 
-### 3. Optional Features
+### 3. Network Configuration
 
-Add these for additional functionality:
+The system automatically creates an **isolated container network**:
 
 ```bash
-# External access
+# Container network (automatically created)
+CONTAINER_SUBNET=10.0.0.0/24
+CONTAINER_GATEWAY=10.0.0.1
+```
+
+### 4. Optional Features
+
+Add these for enhanced functionality:
+
+```bash
+# External access via Cloudflare tunnel
 CLOUDFLARE_TUNNEL_TOKEN=your-tunnel-token
 
-# VPN privacy
-NORDVPN_PRIVATE_KEY=your-nordvpn-key
+# VPN privacy (NordVPN WireGuard)
+NORDVPN_PRIVATE_KEY=your-nordvpn-wireguard-key
+# OR NordVPN OpenVPN
+NORDVPN_USERNAME=your-nordvpn-username
+NORDVPN_PASSWORD=your-nordvpn-password
 
-# Notifications
-DISCORD_WEBHOOK=your-discord-webhook-url
+# Deployment notifications
+DISCORD_WEBHOOK=https://discord.com/api/webhooks/your-webhook-url
 
-# Backup encryption
-BACKUP_ENCRYPTION_KEY=your-gpg-key-id
+# Timezone (optional, defaults to UTC)
+TZ=America/New_York
 ```
 
-## Configuration Structure
+## 📋 Configuration Validation
 
-The `config/cluster.json` file contains the main configuration organized into logical sections:
-
-### Cluster Settings
-- Basic cluster identification
-- Domain and timezone settings
-- Admin contact information
-
-### Proxmox Configuration
-- Server connection details
-- Storage and template settings
-- API configuration
-
-### Networking
-- Management network settings
-- Container network configuration
-- IP allocation strategies
-
-### Services
-- Auto-deployment configuration
-- Service deployment order
-- Default service settings
-
-### Security
-- Authentication providers
-- VPN configuration
-- Security hardening options
-
-### External Access
-- Cloudflare tunnel configuration
-- Public vs private service settings
-- SSL certificate management
-
-### Monitoring & Backup
-- Monitoring stack configuration
-- Alert settings
-- Backup schedules and retention
-
-## Service Configuration
-
-Each service has two configuration files:
-
-### `container.json`
-Defines the LXC container configuration:
-- Container ID and network settings
-- Resource allocation (CPU, memory, disk)
-- Special capabilities and features
-- NFS mount points
-
-### `service.json`
-Defines service metadata and behavior:
-- Service description and categorization
-- Dependencies and conflicts
-- External access configuration
-- Monitoring and backup settings
-
-## Environment Variable Substitution
-
-The JSON configuration supports environment variable substitution using this syntax:
-
-```json
-{
-  "cluster": {
-    "domain": "${DOMAIN}",
-    "name": "${CLUSTER_NAME:-homelab}",
-    "admin_email": "${ADMIN_EMAIL}"
-  }
-}
-```
-
-- `${VARIABLE}` - Required variable (fails if not set)
-- `${VARIABLE:-default}` - Optional variable with default value
-
-## Configuration Validation
-
-Validate your configuration before deployment:
+The Python system provides **comprehensive validation** before deployment:
 
 ```bash
-# Basic validation
-./scripts/validate-config.sh
+# Validate all configuration
+python scripts/deploy.py validate-only
 
-# Detailed validation with verbose output
-./scripts/validate-config.sh --verbose
-
-# Test deployment without making changes
-./scripts/deploy.sh --dry-run --verbose
+# This automatically checks:
+# ✅ Network configuration and IP allocation
+# ✅ Proxmox connectivity and API access
+# ✅ NFS server reachability
+# ✅ Required secrets and tokens
+# ✅ Service configuration syntax
+# ✅ Service dependencies
 ```
 
-## Adding New Services
+## 🏗️ Configuration Components
 
-To add a new service:
+### Environment Variables (`.env`)
+- **Secrets**: API tokens, passwords, private keys
+- **Network settings**: IP ranges, hostnames, domains
+- **Feature toggles**: Optional services and integrations
 
-1. Create service directory: `config/services/myservice/`
+### Pydantic Models
+- **Type safety**: Automatic type validation and conversion
+- **Error prevention**: Clear error messages for invalid configurations
+- **Documentation**: Built-in field descriptions and examples
 
-2. Create `container.json`:
+### Service Discovery
+- **Automatic detection**: Services discovered from `config/services/` directories
+- **Dependency resolution**: Automatic deployment ordering
+- **Flexible structure**: Add services by creating directories
+
+## 📦 Service Configuration
+
+Each service requires **three configuration files**:
+
+### `container.json`
+Defines the **LXC container** configuration:
 ```json
 {
-  "container": {
-    "id": 150,
-    "hostname": "myservice",
-    "ip": "10.0.0.70",
-    "resources": {
-      "cpu": 1,
-      "memory": 512,
-      "disk": 8
-    }
-  }
+  "container_id": 110,
+  "hostname": "service-name",
+  "ip_address": "10.0.0.10",
+  "cpu_cores": 2,
+  "memory_mb": 2048,
+  "disk_gb": 20
 }
 ```
 
-3. Create `service.json`:
+### `service.json`
+Defines **service metadata** and behavior:
 ```json
 {
   "service": {
-    "name": "myservice",
-    "display_name": "My Service",
-    "description": "Description of my service",
-    "category": "productivity"
+    "name": "service-name",
+    "description": "Service description",
+    "category": "media"
   },
   "dependencies": {
-    "required": ["pihole", "nginx-proxy"]
+    "required": ["pihole", "nginx-proxy"],
+    "optional": ["vpn-gateway"]
   }
 }
 ```
 
-4. Create `docker-compose.yaml` with your service definition
+### `docker-compose.yaml`
+Standard **Docker Compose** service definition:
+```yaml
+version: '3.8'
+services:
+  app:
+    image: linuxserver/app:latest
+    # ... standard Docker Compose configuration
+```
 
-5. Add to auto-deployment in `cluster.json` or deploy manually
+## 🎨 Template Processing
 
-## Troubleshooting
+The system uses **Jinja2 templates** for reliable variable substitution:
+
+```yaml
+# In docker-compose.yaml
+version: '3.8'
+services:
+  app:
+    image: app:latest
+    environment:
+      - DOMAIN={{ domain }}
+      - ADMIN_EMAIL={{ admin_email }}
+      - API_KEY={{ cloudflare_api_token }}
+    labels:
+      - "traefik.http.routers.app.rule=Host(`app.{{ domain }}`)"
+```
+
+**Template variables available:**
+- All environment variables from `.env`
+- Network configuration (subnets, gateways, IPs)
+- Service-specific settings
+- Container configuration
+
+## ✅ Configuration Validation
+
+The Python CLI provides **comprehensive validation**:
+
+```bash
+# Run all validation checks
+python scripts/deploy.py validate-only
+
+# List discovered services
+python scripts/deploy.py list-services --details
+
+# Test deployment without changes
+python scripts/deploy.py deploy --dry-run
+
+# Deploy specific services only
+python scripts/deploy.py deploy --services pihole,nginx-proxy
+```
+
+**Validation includes:**
+- ✅ **Network validation**: IP ranges, gateway accessibility, no conflicts
+- ✅ **System validation**: Required commands, Python version, permissions
+- ✅ **Proxmox validation**: API connectivity, authentication, version check
+- ✅ **Storage validation**: NFS server connectivity and mount accessibility
+- ✅ **Service validation**: JSON syntax, YAML syntax, dependency resolution
+- ✅ **Secret validation**: Required API tokens and passwords present
+
+## 📦 Adding New Services
+
+The new **service discovery system** makes adding services incredibly easy:
+
+### 1. Create Service Directory
+```bash
+# Create directory for your service
+mkdir config/services/sonarr
+```
+
+### 2. Create Configuration Files
+
+**`container.json`** (LXC container settings):
+```json
+{
+  "container_id": 110,
+  "hostname": "sonarr",
+  "ip_address": "10.0.0.10",
+  "cpu_cores": 2,
+  "memory_mb": 2048,
+  "disk_gb": 20
+}
+```
+
+**`service.json`** (service metadata):
+```json
+{
+  "service": {
+    "name": "sonarr",
+    "description": "TV show management",
+    "category": "media"
+  },
+  "dependencies": {
+    "required": ["pihole", "nginx-proxy"],
+    "optional": ["vpn-gateway"]
+  }
+}
+```
+
+**`docker-compose.yaml`** (standard Docker Compose):
+```yaml
+version: '3.8'
+services:
+  sonarr:
+    image: linuxserver/sonarr:latest
+    container_name: sonarr
+    # ... standard configuration
+```
+
+### 3. Deploy Automatically
+```bash
+# Service is automatically discovered!
+python scripts/deploy.py list-services
+
+# Deploy the new service
+python scripts/deploy.py deploy --services sonarr
+```
+
+**No manual registration required** - services are automatically discovered from directories!
+
+## 🔧 Troubleshooting
 
 ### Configuration Issues
 
-1. **JSON Syntax Errors**
-   ```bash
-   # Check JSON syntax
-   jq . config/cluster.json
-   jq . config/services/*/container.json
-   ```
+**1. Validation Failures:**
+```bash
+# Run comprehensive validation
+python scripts/deploy.py validate-only
 
-2. **Missing Environment Variables**
-   ```bash
-   # Check what's missing
-   ./scripts/validate-config.sh --verbose
-   ```
+# Check specific error messages
+# Python provides clear, detailed error descriptions
+```
 
-3. **Network Configuration**
-   ```bash
-   # Validate network settings
-   ./scripts/validate-config.sh
-   ```
+**2. Network Configuration:**
+```bash
+# Test Proxmox connectivity
+curl -k https://192.168.1.100:8006/api2/json/version
+
+# Test NFS server
+ping 192.168.1.200
+showmount -e 192.168.1.200
+```
+
+**3. Service Discovery Issues:**
+```bash
+# Check service structure
+python scripts/deploy.py list-services --details
+
+# Verify required files exist
+ls config/services/*/container.json
+ls config/services/*/service.json
+ls config/services/*/docker-compose.y*ml
+```
 
 ### Common Problems
 
-- **Invalid JSON**: Use a JSON validator or `jq` to check syntax
-- **Missing secrets**: Ensure all required variables are set in `.env`
-- **Network conflicts**: Check IP ranges don't overlap
-- **Service dependencies**: Ensure dependent services are configured
+- **Missing environment variables**: Check `.env` file for all required values
+- **Invalid JSON/YAML syntax**: Use validation to get specific error locations
+- **Network conflicts**: Ensure management and container networks don't overlap
+- **Service dependencies**: Use `list-services` to check dependency resolution
+- **API connectivity**: Verify Proxmox and Cloudflare tokens are correct
 
-## Security Best Practices
+## 🔐 Security Best Practices
 
-1. **Never commit `.env` file** - Contains sensitive secrets
-2. **Use strong passwords** - Generate secure passwords for all services
-3. **Regular backups** - Enable automatic backup encryption
-4. **Monitor access** - Review authentication logs regularly
-5. **Update regularly** - Keep services and base system updated
+### Environment Security
+1. **Never commit `.env` file** - Add to `.gitignore` (already included)
+2. **Use strong passwords** - Generate secure 20+ character passwords
+3. **Rotate API tokens** - Regularly regenerate Proxmox and Cloudflare tokens
+4. **Secure NFS** - Use proper NFS export restrictions and authentication
 
-## Advanced Configuration
+### Network Security
+1. **Network isolation** - Services isolated from management network
+2. **VPN privacy** - Route download services through VPN gateway
+3. **DNS filtering** - All DNS queries filtered through Pi-hole
+4. **SSL everywhere** - Automatic SSL certificates for all services
+
+### Configuration Security
+1. **Type validation** - Pydantic prevents many configuration errors
+2. **Secret management** - Environment variables for all sensitive data
+3. **Least privilege** - Services run with minimal required permissions
+4. **Regular validation** - Run validation before each deployment
+
+## 🚀 Advanced Configuration
 
 ### Custom Network Ranges
 Override default network settings:
 ```bash
+# Custom management network
 MANAGEMENT_SUBNET=10.10.10.0/24
+MANAGEMENT_GATEWAY=10.10.10.1
+
+# Custom container network
 CONTAINER_SUBNET=172.16.0.0/24
+CONTAINER_GATEWAY=172.16.0.1
 ```
 
 ### Multiple Domains
-Configure additional domains in service files or environment variables.
+```bash
+# Primary domain
+DOMAIN=homelab.local
+
+# Additional domains in service configurations
+# Services can specify their own domain overrides
+```
 
 ### High Availability
-Configure clustering and failover in the Proxmox and service configurations.
+- **Proxmox clustering**: Configure multiple Proxmox nodes
+- **Service redundancy**: Deploy critical services on multiple containers
+- **Storage redundancy**: Use replicated NFS or distributed storage
 
-## Getting Help
+## 🆘 Getting Help
 
-- Run validation: `./scripts/validate-config.sh --verbose`
-- Check logs: `./scripts/health-check.sh`
-- Review documentation: `docs/` directory
-- Open GitHub issue for bugs or questions
+```bash
+# Comprehensive validation and troubleshooting
+python scripts/deploy.py validate-only
+
+# List all discovered services and their status
+python scripts/deploy.py list-services --details
+
+# View CLI help
+python scripts/deploy.py --help
+```
+
+**Documentation:**
+- **[Installation Guide](installation.md)** - Complete setup process
+- **[Service Management](services.md)** - Adding and managing services
+- **[CLI Reference](cli-reference.md)** - Complete command documentation
+- **[GitHub Issues](https://github.com/Khizar-Hussian/proxmox-homelab-template/issues)** - Report bugs or ask questions

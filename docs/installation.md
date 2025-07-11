@@ -1,14 +1,15 @@
 # 📖 Complete Installation Guide
 
-This guide provides step-by-step instructions for setting up the Proxmox Homelab Template from scratch.
+This guide provides step-by-step instructions for setting up the modern Python-based Proxmox Homelab Template from scratch.
 
 ## 📋 Prerequisites
 
 ### System Requirements
 
 - **Proxmox VE 8.0+** running on dedicated hardware
-- **Minimum 4GB RAM** (8GB+ recommended)
+- **Minimum 8GB RAM** (16GB+ recommended for media services)
 - **50GB+ available storage** for containers
+- **Python 3.8+** installed on deployment machine
 - **Stable internet connection** for downloads
 - **SSH access** to Proxmox host
 
@@ -16,312 +17,423 @@ This guide provides step-by-step instructions for setting up the Proxmox Homelab
 
 - **Domain name** from any registrar (Cloudflare DNS required)
 - **Cloudflare account** for DNS management and tunnels
-- **GitHub account** for repository and GitOps automation
-- **NFS server** (optional) - TrueNAS, Synology, or any NFS share
+- **NFS server** (required) - TrueNAS, Synology, or any NFS share
+- **VPN provider** (optional) - NordVPN supported for privacy
 
 ### Network Requirements
 
-- **Static IP** for Proxmox host
-- **Port 22 (SSH)** accessible from your computer
-- **Outbound internet** access from Proxmox host
-- **No conflicting 10.0.0.0/24** subnet (containers will use this range)
+- **Management network** - Your existing home network (e.g., 192.168.1.0/24)
+- **Container network** - Automatically created isolated network (10.0.0.0/24)
+- **Internet access** from Proxmox host for container downloads
 
-## 🔧 Step 1: Proxmox Preparation
+## 🚀 Step 1: Proxmox Preparation
 
-### 1.1 Update Proxmox
+### 1.1 Create API Token
+
+1. Login to Proxmox web interface at `https://your-proxmox-ip:8006`
+2. Navigate to **Datacenter → Permissions → API Tokens**
+3. Click **Add** to create a new token:
+   - **User**: `root@pam`
+   - **Token ID**: `homelab-deploy`
+   - **Privilege Separation**: Unchecked (full privileges)
+4. **Copy the generated token** - you'll need this for `.env` configuration
+
+### 1.2 Download LXC Templates
 
 ```bash
-# SSH to your Proxmox host
+# SSH to Proxmox host and download Ubuntu template
 ssh root@your-proxmox-ip
 
-# Update system
-apt update && apt upgrade -y
+# Download the Ubuntu 24.04 LXC template
+pveam download local ubuntu-24.04-standard_24.04-2_amd64.tar.zst
 
-# Install required packages
-apt install -y curl jq git
-```
-
-### 1.2 Create API Token
-
-1. **Access Proxmox web interface**: `https://your-proxmox-ip:8006`
-2. **Navigate**: Datacenter → Permissions → API Tokens
-3. **Add token**: 
-   - Token ID: `homelab`
-   - User: `root@pam`
-   - Privilege Separation: **Unchecked**
-4. **Copy the token** - you'll need this for configuration
-
-### 1.3 Download Container Template
-
-```bash
-# Update available templates
-pveam update
-
-# Download Ubuntu 22.04 template
-pveam download local ubuntu-22.04-standard_22.04-1_amd64.tar.zst
-
-# Verify download
+# Verify template downloaded
 pveam list local
 ```
 
-## 🌐 Step 2: External Services Setup
+### 1.3 Verify Storage Configuration
 
-### 2.1 Cloudflare DNS Setup
+```bash
+# Check available storage pools
+pvesm status
 
-1. **Transfer domain to Cloudflare DNS**:
-   - Add domain to Cloudflare account
+# Ensure you have at least 50GB available
+df -h /var/lib/vz
+```
+
+## 🌐 Step 2: Network Planning
+
+### 2.1 Document Your Current Network
+
+Identify your current network configuration:
+
+```bash
+# Find your home network details
+ip route | grep default
+ip addr show
+
+# Example outputs to note:
+# Management network: 192.168.1.0/24
+# Gateway: 192.168.1.1
+# Proxmox IP: 192.168.1.100
+```
+
+### 2.2 Plan IP Allocations
+
+The system will create this network architecture:
+
+```
+Management Network (Your existing network)
+├── Proxmox Host: 192.168.1.100
+├── NFS Server: 192.168.1.200
+└── Your devices: 192.168.1.2-50
+
+Container Network (Automatically created)
+├── Core Services: 10.0.0.40-49
+├── Media Services: 10.0.0.10-19
+└── User Services: 10.0.0.70+
+```
+
+## ☁️ Step 3: Cloudflare Setup
+
+### 3.1 Configure DNS
+
+1. **Transfer domain to Cloudflare DNS** (if not already):
+   - Add your domain to Cloudflare
    - Update nameservers at your registrar
-   - Wait for DNS propagation (up to 24 hours)
+   - Verify DNS is active
 
-2. **Create API token**:
-   - Go to **My Profile → API Tokens**
-   - **Create Token** with:
-     - Zone: `Zone:Read`, `DNS:Edit` for your domain
-     - Account: `Account:Read`
-   - **Copy the token**
+2. **Create API Token**:
+   - Go to [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
+   - Click **Create Token**
+   - Use **Edit zone DNS** template
+   - **Zone Resources**: Include your domain
+   - **Copy the generated token**
 
-3. **Create Cloudflare tunnel**:
-   - Go to **Zero Trust → Access → Tunnels**
-   - **Create tunnel** named `homelab-tunnel`
-   - **Copy tunnel token**
+### 3.2 Create Cloudflare Tunnel (Optional)
 
-### 2.2 GitHub Repository Setup
+For external access to your services:
 
-1. **Fork this repository**:
-   - Go to the template repository
-   - Click **Fork** → **Create fork**
+1. Go to **Zero Trust → Access → Tunnels**
+2. Click **Create a tunnel**
+3. Choose **Cloudflared**
+4. Name your tunnel: `homelab-tunnel`
+5. **Copy the tunnel token** for `.env` configuration
 
-2. **Clone your fork**:
-   ```bash
-   git clone https://github.com/yourusername/proxmox-homelab-template.git
-   cd proxmox-homelab-template
-   ```
+## 💾 Step 4: NFS Server Setup
 
-3. **Set up GitHub Secrets** (Repository → Settings → Secrets → Actions):
+### 4.1 Configure NFS Exports
 
-   | Secret Name | Value | Description |
-   |-------------|-------|-------------|
-   | `PROXMOX_HOST` | `192.168.1.10` | Your Proxmox IP |
-   | `PROXMOX_TOKEN` | `PVEAPIToken=root@pam!homelab=...` | From step 1.2 |
-   | `CLOUDFLARE_API_TOKEN` | `...` | From step 2.1 |
-   | `CLOUDFLARE_TUNNEL_TOKEN` | `...` | From step 2.1 |
-   | `AUTHENTIK_ADMIN_PASSWORD` | `your-secure-password` | SSO admin password |
-
-## ⚙️ Step 3: Configuration
-
-### 3.1 Basic Configuration
+On your NFS server (TrueNAS, Synology, etc.), create these directories:
 
 ```bash
-# Copy configuration template
-cp config/cluster.yaml.example config/cluster.yaml
-
-# Edit with your settings
-nano config/cluster.yaml
+# Required directory structure
+/mnt/tank/config     # Service configurations
+/mnt/tank/media      # Media files (optional)
+/mnt/tank/backups    # Backup storage
 ```
 
-**Required changes**:
-```yaml
-cluster:
-  domain: "yourdomain.com"              # Your actual domain
-  admin_email: "admin@yourdomain.com"   # Your email
+### 4.2 Configure NFS Exports
 
-proxmox:
-  host: "192.168.1.10"                  # Your Proxmox IP
-
-networks:
-  management:
-    subnet: "192.168.1.0/24"            # Your home network
-    gateway: "192.168.1.1"              # Your router IP
-    
-storage:
-  nfs_server: "192.168.1.20"            # Your NFS server (if any)
-```
-
-### 3.2 Environment Variables
+Example `/etc/exports` configuration:
 
 ```bash
-# Copy environment template
+# Allow access from your management network
+/mnt/tank/config    192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+/mnt/tank/media     192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+/mnt/tank/backups   192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+```
+
+### 4.3 Test NFS Access
+
+```bash
+# From Proxmox host, test NFS connectivity
+showmount -e 192.168.1.200
+mount -t nfs 192.168.1.200:/mnt/tank/config /tmp/test
+ls /tmp/test
+umount /tmp/test
+```
+
+## 🐍 Step 5: Python Environment Setup
+
+### 5.1 Clone Repository
+
+```bash
+# Clone to your deployment machine (can be your laptop)
+git clone https://github.com/Khizar-Hussian/proxmox-homelab-template.git
+cd proxmox-homelab-template
+```
+
+### 5.2 Install Dependencies
+
+```bash
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Or use virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate     # Windows
+pip install -r requirements.txt
+```
+
+### 5.3 Verify Installation
+
+```bash
+# Test the CLI
+python scripts/deploy.py --help
+
+# You should see the help output with available commands
+```
+
+## ⚙️ Step 6: Configuration
+
+### 6.1 Create Environment File
+
+```bash
+# Copy the example configuration
 cp .env.example .env
-
-# Edit with your credentials
-nano .env
 ```
 
-**Required variables**:
-```bash
-PROXMOX_HOST=192.168.1.10
-PROXMOX_TOKEN=PVEAPIToken=root@pam!homelab=your-token-here
-AUTHENTIK_ADMIN_PASSWORD=your-secure-password
+### 6.2 Configure Required Settings
 
-# Optional but recommended
-CLOUDFLARE_API_TOKEN=your-cloudflare-token
-DISCORD_WEBHOOK=your-discord-webhook-url
-EMAIL_RECIPIENT=admin@yourdomain.com
-```
-
-## 🚀 Step 4: Deployment
-
-### 4.1 Prerequisites Check
+Edit `.env` with your specific values:
 
 ```bash
-# Verify system is ready
-sudo ./scripts/helpers/prerequisites.sh
+# Domain and Admin
+DOMAIN=yourdomain.com
+ADMIN_EMAIL=admin@yourdomain.com
 
-# Validate configuration
-./scripts/helpers/validation.sh config/cluster.yaml
+# Network Configuration
+PROXMOX_HOST=192.168.1.100
+MANAGEMENT_SUBNET=192.168.1.0/24
+MANAGEMENT_GATEWAY=192.168.1.1
+
+# Storage
+NFS_SERVER=192.168.1.200
+
+# API Tokens (from previous steps)
+PROXMOX_TOKEN=root@pam!homelab-deploy=your-proxmox-token-here
+CLOUDFLARE_API_TOKEN=your-cloudflare-api-token-here
+
+# Passwords
+AUTHENTIK_ADMIN_PASSWORD=your-strong-password-here
 ```
 
-### 4.2 Dry Run (Recommended)
+### 6.3 Configure Optional Settings
 
 ```bash
-# See what will be deployed without making changes
-sudo ./scripts/deploy.sh --dry-run --verbose
+# External Access (optional)
+CLOUDFLARE_TUNNEL_TOKEN=your-tunnel-token-here
 
-# Expected output:
-# ✓ Network bridge creation
-# ✓ 5 LXC containers 
-# ✓ Docker installation
-# ✓ Service deployment
+# VPN Privacy (optional)
+NORDVPN_PRIVATE_KEY=your-nordvpn-wireguard-key
+# or
+NORDVPN_USERNAME=your-nordvpn-username
+NORDVPN_PASSWORD=your-nordvpn-password
+
+# Notifications (optional)
+DISCORD_WEBHOOK=https://discord.com/api/webhooks/your-webhook-url
 ```
 
-### 4.3 Production Deployment
+## ✅ Step 7: Validation and Deployment
+
+### 7.1 Validate Configuration
 
 ```bash
-# Deploy everything (takes 5-10 minutes)
-sudo ./scripts/deploy.sh --verbose
+# Run comprehensive validation
+python scripts/deploy.py validate-only
 
-# Monitor progress in real-time
-tail -f /var/log/homelab-deployment.log
+# This will check:
+# - Network configuration
+# - Proxmox connectivity
+# - NFS server access
+# - Required secrets
+# - Service discovery
 ```
 
-### 4.4 Deployment Verification
+### 7.2 List Discovered Services
 
 ```bash
-# Check container status
-pct list
-
-# Expected output:
-# VMID  Status  Name
-# 140   running pihole
-# 141   running nginx-proxy  
-# 142   running monitoring
-# 143   running authentik
-# 144   running homepage
-
-# Verify services are responding
-./scripts/health-check.sh
+# See what services will be deployed
+python scripts/deploy.py list-services --details
 ```
 
-## 🎯 Step 5: First Access
+### 7.3 Test Deployment (Dry Run)
 
-### 5.1 Service Access
+```bash
+# See what would be deployed without making changes
+python scripts/deploy.py deploy --dry-run
+```
 
-After deployment, access your services:
+### 7.4 Deploy Infrastructure
 
-| Service | URL | Purpose |
-|---------|-----|---------|
-| **Homepage** | `https://yourdomain.com` | Main dashboard |
-| **Pi-hole** | `https://pihole.yourdomain.com/admin` | DNS management |
-| **Nginx Proxy** | `https://proxy.yourdomain.com:81` | SSL certificate management |
-| **Grafana** | `https://grafana.yourdomain.com` | Monitoring dashboards |
-| **Authentik** | `https://auth.yourdomain.com` | User management |
+```bash
+# Deploy all auto-deploy services
+python scripts/deploy.py deploy
 
-### 5.2 Default Credentials
+# Or deploy specific services
+python scripts/deploy.py deploy --services pihole,nginx-proxy
+```
 
-| Service | Username | Password |
-|---------|----------|----------|
-| **Pi-hole** | `admin` | Check container logs or deployment output |
-| **Nginx Proxy Manager** | `admin@example.com` | `changeme` |
-| **Grafana** | `admin` | `admin` |
-| **Authentik** | `admin@yourdomain.com` | Your `AUTHENTIK_ADMIN_PASSWORD` |
+## 🎯 Step 8: Post-Deployment Configuration
 
-### 5.3 Initial Setup Tasks
+### 8.1 Access Your Services
 
-1. **Change all default passwords** immediately
-2. **Configure SSL certificates** in Nginx Proxy Manager
-3. **Set up DNS records** for your services in Pi-hole
-4. **Review monitoring dashboards** in Grafana
-5. **Configure authentication** in Authentik
+After successful deployment, access your services:
 
-## 🔧 Step 6: Post-Deployment Configuration
+- **Homepage**: `https://yourdomain.com`
+- **Pi-hole**: `https://pihole.yourdomain.com/admin`
+- **Nginx Proxy Manager**: `https://proxy.yourdomain.com:81`
+- **Grafana**: `https://grafana.yourdomain.com`
+- **Authentik**: `https://auth.yourdomain.com`
 
-### 6.1 SSL Certificates
+### 8.2 Change Default Passwords
 
-1. **Access Nginx Proxy Manager**: `https://proxy.yourdomain.com:81`
-2. **Add proxy hosts** for each service:
-   - Domain: `pihole.yourdomain.com`
-   - Forward to: `10.0.0.40:80`
-   - Request SSL certificate
-3. **Repeat for all services**
+1. **Nginx Proxy Manager**:
+   - Login: `admin@example.com` / `changeme`
+   - Change password in admin interface
 
-### 6.2 DNS Configuration
+2. **Grafana**:
+   - Login: `admin` / `admin`
+   - Change password on first login
 
-1. **Access Pi-hole**: `https://pihole.yourdomain.com/admin`
-2. **Add local DNS records**:
-   - `yourdomain.com` → `10.0.0.44` (Homepage)
-   - `pihole.yourdomain.com` → `10.0.0.40`
-   - `proxy.yourdomain.com` → `10.0.0.41`
-   - `grafana.yourdomain.com` → `10.0.0.42`
-   - `auth.yourdomain.com` → `10.0.0.43`
+3. **Pi-hole**:
+   - Password auto-generated, check container logs
 
-### 6.3 Monitoring Setup
+### 8.3 Configure SSL Certificates
 
-1. **Access Grafana**: `https://grafana.yourdomain.com`
-2. **Review pre-installed dashboards**:
-   - Infrastructure Overview
-   - Service Health
-   - Network Monitoring
-3. **Configure alert notifications** (Discord, email)
+1. Login to **Nginx Proxy Manager**
+2. Go to **SSL Certificates**
+3. Add **Let's Encrypt Certificate**:
+   - Domain: `*.yourdomain.com`
+   - Email: Your admin email
+   - DNS Provider: Cloudflare
+   - API Token: Your Cloudflare token
+
+### 8.4 Set Up Proxy Hosts
+
+Create proxy hosts for each service:
+- **Homepage**: `yourdomain.com` → `10.0.0.44:3000`
+- **Pi-hole**: `pihole.yourdomain.com` → `10.0.0.41:80`
+- **Grafana**: `grafana.yourdomain.com` → `10.0.0.45:3000`
+
+## 🔧 Step 9: Adding Custom Services
+
+### 9.1 Create Service Directory
+
+```bash
+# Example: Adding Sonarr
+mkdir config/services/sonarr
+```
+
+### 9.2 Configure Service Files
+
+Create the three required files:
+
+```bash
+# Service metadata
+cat > config/services/sonarr/service.json << 'EOF'
+{
+  "service": {
+    "name": "sonarr",
+    "description": "TV show management",
+    "category": "media"
+  },
+  "dependencies": {
+    "required": ["pihole", "nginx-proxy"],
+    "optional": ["vpn-gateway"]
+  }
+}
+EOF
+
+# Container configuration
+cat > config/services/sonarr/container.json << 'EOF'
+{
+  "container_id": 110,
+  "hostname": "sonarr",
+  "ip_address": "10.0.0.10",
+  "cpu_cores": 2,
+  "memory_mb": 2048,
+  "disk_gb": 20
+}
+EOF
+
+# Docker Compose configuration
+cat > config/services/sonarr/docker-compose.yaml << 'EOF'
+version: '3.8'
+services:
+  sonarr:
+    image: linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - /opt/appdata/sonarr:/config
+      - /mnt/media:/media
+    ports:
+      - "8989:8989"
+    restart: unless-stopped
+EOF
+```
+
+### 9.3 Deploy New Service
+
+```bash
+# Deploy the new service
+python scripts/deploy.py deploy --services sonarr
+```
 
 ## 🔍 Troubleshooting
 
 ### Common Issues
 
-**Container creation fails**:
-```bash
-# Check Proxmox storage
-pvesm status
+1. **Validation Failures**:
+   ```bash
+   # Check specific error messages
+   python scripts/deploy.py validate-only
+   ```
 
-# Verify template exists
-pveam list local
+2. **Network Connectivity**:
+   ```bash
+   # Test Proxmox API
+   curl -k https://192.168.1.100:8006/api2/json/version
+   
+   # Test NFS server
+   ping 192.168.1.200
+   showmount -e 192.168.1.200
+   ```
 
-# Check available resources
-free -h && df -h
-```
+3. **Service Discovery Issues**:
+   ```bash
+   # Check service file structure
+   python scripts/deploy.py list-services --details
+   ```
 
-**Network connectivity issues**:
-```bash
-# Verify bridge creation
-ip addr show vmbr1
+4. **Container Issues**:
+   ```bash
+   # Check container status on Proxmox
+   pct list
+   pct status 100
+   ```
 
-# Test container network
-pct exec 140 -- ping 8.8.8.8
+### Getting Help
 
-# Check firewall rules
-iptables -L -n
-```
-
-**Service not responding**:
-```bash
-# Check container status
-pct status 140
-
-# View container logs
-pct exec 140 -- docker logs pihole
-
-# Restart service
-pct exec 140 -- docker compose restart
-```
-
-For more troubleshooting help, see **[docs/troubleshooting.md](troubleshooting.md)**.
+1. **Review validation output** for specific error messages
+2. **Check prerequisites** are met
+3. **Verify network connectivity** between components
+4. **Create GitHub issue** with error details if needed
 
 ## 🎉 Next Steps
 
-- **[Add your first service](services.md)** - Deploy Nextcloud, Jellyfin, etc.
-- **[Configure external access](external-access.md)** - Set up remote access
-- **[Set up backups](backup.md)** - Protect your configuration and data
-- **[Join the community](../CONTRIBUTING.md)** - Share your experience and contribute
+- **[Service Management Guide](services.md)** - Adding and managing services
+- **[Configuration Reference](configuration.md)** - All configuration options
+- **[CLI Reference](cli-reference.md)** - Complete command documentation
+- **[Troubleshooting Guide](troubleshooting.md)** - Common issues and solutions
 
 ---
 
-📖 **[← Back to README](../README.md)** | **[Configuration Guide →](configuration.md)**
+**Congratulations!** Your modern Python-based Proxmox homelab is now ready to use! 🎉
