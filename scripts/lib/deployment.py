@@ -36,17 +36,26 @@ class ProxmoxDeployer:
         """Connect to Proxmox API"""
         try:
             # Parse token format: root@pam!token-id=token-secret
-            token_parts = self.config.secrets.proxmox_token.split('=')
-            if len(token_parts) != 2:
-                raise ValueError("Invalid token format")
+            token_full = self.config.secrets.proxmox_token
             
-            user_token = token_parts[0]  # root@pam!token-id
-            token_secret = token_parts[1]  # token-secret
+            if '=' not in token_full:
+                raise ValueError("Invalid token format - missing '='")
+            
+            # Split into user!token-id and token-secret
+            user_token_part, token_secret = token_full.split('=', 1)
+            
+            if '!' not in user_token_part:
+                raise ValueError("Invalid token format - missing '!'")
+            
+            # Split user and token name
+            user, token_name = user_token_part.split('!', 1)
+            
+            console.print(f"🔐 Connecting to Proxmox with user: {user}, token: {token_name}")
             
             proxmox = ProxmoxAPI(
                 self.config.proxmox.host,
-                user=user_token,
-                token_name=None,
+                user=user,
+                token_name=token_name,
                 token_value=token_secret,
                 verify_ssl=False,
                 port=self.config.proxmox.api_port
