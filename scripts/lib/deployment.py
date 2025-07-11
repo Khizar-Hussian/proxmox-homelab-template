@@ -281,22 +281,33 @@ class ProxmoxDeployer:
         """Install Docker and Docker Compose in container"""
         console.print(f"🐳 Installing Docker in container {container_id}")
         
+        # First, kill any hanging apt processes
+        try:
+            console.print("🔧 Cleaning up any hanging processes...")
+            self._execute_in_container(container_id, "pkill -f apt-get || true")
+            self._execute_in_container(container_id, "rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock*")
+        except:
+            pass  # Continue even if cleanup fails
+        
         commands = [
             ("locale-gen en_US.UTF-8", "Generating locales"),
             ("update-locale LANG=en_US.UTF-8", "Setting system locale"),
             ("apt-get update", "Updating package lists"),
-            ("apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release", "Installing prerequisites"),
+            ("apt-get install -y --no-install-recommends apt-transport-https ca-certificates curl gnupg lsb-release", "Installing prerequisites"),
             ("curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg", "Adding Docker GPG key"),
             ("echo \"deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" | tee /etc/apt/sources.list.d/docker.list > /dev/null", "Adding Docker repository"),
             ("apt-get update", "Updating package lists with Docker repo"),
-            ("apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin", "Installing Docker"),
+            ("apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-compose-plugin", "Installing Docker"),
             ("systemctl enable docker", "Enabling Docker service"),
-            ("systemctl start docker", "Starting Docker service")
+            ("systemctl start docker", "Starting Docker service"),
+            ("docker --version", "Verifying Docker installation")
         ]
         
         for cmd, description in commands:
             console.print(f"⚙️  {description}...")
-            self._execute_in_container(container_id, cmd)
+            result = self._execute_in_container(container_id, cmd)
+            if "docker --version" in cmd:
+                console.print(f"✅ {result.strip()}")
         
         console.print(f"✅ Docker installed in container {container_id}")
     
