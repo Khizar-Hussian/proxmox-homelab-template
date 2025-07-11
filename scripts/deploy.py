@@ -179,33 +179,48 @@ def deploy_services_impl(services: List[str], config: Config, verbose: bool = Fa
         # Initialize deployer
         deployer = ProxmoxDeployer(config)
         
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            console=console,
-        ) as progress:
-            
-            # Phase 1: Infrastructure Setup
-            infra_task = progress.add_task("Setting up infrastructure...", total=2)
-            
-            # Network setup
-            progress.update(infra_task, description="Setting up networking...")
+        if verbose:
+            # No progress bar in verbose mode - show direct output
+            console.print("\n📡 Setting up networking...", style="blue")
             deployer.setup_networking(verbose)
-            progress.update(infra_task, advance=1)
             
-            # Storage setup
-            progress.update(infra_task, description="Setting up storage...")
+            console.print("\n💾 Setting up storage...", style="blue")
             deployer.setup_storage(verbose)
-            progress.update(infra_task, advance=1)
             
-            # Phase 2: Service Deployment
-            service_task = progress.add_task("Deploying services...", total=len(services))
-            
+            console.print("\n🚀 Deploying services...", style="blue")
             for service_name in services:
-                progress.update(service_task, description=f"Deploying {service_name}...")
+                console.print(f"\n📦 Starting deployment of {service_name}...", style="bold blue")
                 deployer.deploy_single_service(service_name, verbose)
-                progress.update(service_task, advance=1)
+                console.print(f"✅ Completed deployment of {service_name}", style="green")
+        else:
+            # Use progress bar for non-verbose mode
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                console=console,
+            ) as progress:
+                
+                # Phase 1: Infrastructure Setup
+                infra_task = progress.add_task("Setting up infrastructure...", total=2)
+                
+                # Network setup
+                progress.update(infra_task, description="Setting up networking...")
+                deployer.setup_networking(verbose)
+                progress.update(infra_task, advance=1)
+                
+                # Storage setup
+                progress.update(infra_task, description="Setting up storage...")
+                deployer.setup_storage(verbose)
+                progress.update(infra_task, advance=1)
+                
+                # Phase 2: Service Deployment
+                service_task = progress.add_task("Deploying services...", total=len(services))
+                
+                for service_name in services:
+                    progress.update(service_task, description=f"Deploying {service_name}...")
+                    deployer.deploy_single_service(service_name, verbose)
+                    progress.update(service_task, advance=1)
         
         # Deployment complete
         console.print("\n🎉 Deployment completed successfully!", style="bold green")
