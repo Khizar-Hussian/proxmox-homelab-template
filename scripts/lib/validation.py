@@ -135,9 +135,15 @@ class ConfigValidator:
     def _validate_proxmox_connectivity(self) -> None:
         """Validate Proxmox server connectivity and API access"""
         try:
+            # Prepare headers for API token authentication
+            headers = {}
+            if self.config.secrets.proxmox_token:
+                headers["Authorization"] = f"PVEAPIToken={self.config.secrets.proxmox_token}"
+            
             # Basic connectivity check
             response = requests.get(
                 f"https://{self.config.proxmox.host}:{self.config.proxmox.api_port}/api2/json/version",
+                headers=headers,
                 verify=False,
                 timeout=10
             )
@@ -148,6 +154,9 @@ class ConfigValidator:
                     f"✅ Connected to Proxmox VE {version_info['data']['version']}", 
                     style="green"
                 )
+            elif response.status_code == 401:
+                self.errors.append("Authentication failed - check your PROXMOX_TOKEN format")
+                self.errors.append("Expected format: root@pam!token-id=token-secret")
             else:
                 self.errors.append(f"Failed to connect to Proxmox API: HTTP {response.status_code}")
                 
