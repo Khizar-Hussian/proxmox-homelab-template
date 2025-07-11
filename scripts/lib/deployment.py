@@ -51,6 +51,7 @@ class ProxmoxDeployer:
             user, token_name = user_token_part.split('!', 1)
             
             console.print(f"🔐 Connecting to Proxmox with user: {user}, token: {token_name}")
+            console.print(f"📦 Using template: {self.config.proxmox.template}")
             
             proxmox = ProxmoxAPI(
                 self.config.proxmox.host,
@@ -210,7 +211,7 @@ class ProxmoxDeployer:
             create_params = {
                 'vmid': container_id,
                 'hostname': hostname,
-                'ostemplate': f"local:vztmpl/{self.config.proxmox.template}",
+                'ostemplate': self.config.proxmox.template,
                 'cores': container_config.get('cpu_cores', 1),
                 'memory': container_config.get('memory_mb', 512),
                 'rootfs': f"local-lvm:{container_config.get('disk_gb', 8)}",
