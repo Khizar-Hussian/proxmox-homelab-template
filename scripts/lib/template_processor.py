@@ -15,7 +15,8 @@ console = Console()
 class TemplateProcessor:
     """Processes Jinja2 templates with configuration data"""
     
-    def __init__(self, template_dir: Optional[Path] = None):
+    def __init__(self, config: Config, template_dir: Optional[Path] = None):
+        self.config = config
         self.template_dir = template_dir or Path("config")
         
         # Create Jinja2 environment
@@ -28,6 +29,48 @@ class TemplateProcessor:
         
         # Add custom filters
         self.env.filters['default'] = self._default_filter
+    
+    def process_template(self, template_path: Path) -> str:
+        """Process a template file with configuration data"""
+        try:
+            # Load template content
+            with open(template_path, 'r') as f:
+                template_content = f.read()
+            
+            template = Template(template_content)
+            
+            # Prepare template variables from config
+            template_vars = self._get_template_vars()
+            
+            return template.render(template_vars)
+            
+        except Exception as e:
+            console.print(f"❌ Error processing template {template_path}: {e}", style="red")
+            raise
+    
+    def _get_template_vars(self) -> Dict[str, Any]:
+        """Get template variables from configuration"""
+        return {
+            'domain': self.config.cluster.domain,
+            'admin_email': self.config.cluster.admin_email,
+            'timezone': self.config.cluster.timezone,
+            'management_subnet': self.config.network.management_subnet,
+            'container_subnet': self.config.network.container_subnet,
+            'container_gateway': self.config.network.container_gateway,
+            'nfs_server': self.config.storage.nfs_server,
+            'cloudflare_api_token': self.config.secrets.cloudflare_api_token,
+            'authentik_admin_password': self.config.secrets.authentik_admin_password,
+            'mysql_root_password': self.config.secrets.mysql_root_password or 'defaultroot123',
+            'mysql_database': 'homelab',
+            'mysql_user': 'homelab',
+            'mysql_password': self.config.secrets.mysql_password or 'defaultuser123',
+            'redis_password': self.config.secrets.redis_password or 'defaultredis123',
+            'vpn_enabled': self.config.vpn.enabled,
+            'nordvpn_private_key': self.config.secrets.nordvpn_private_key,
+            'nordvpn_username': self.config.secrets.nordvpn_username,
+            'nordvpn_password': self.config.secrets.nordvpn_password,
+            'discord_webhook': self.config.secrets.discord_webhook,
+        }
     
     def _default_filter(self, value: Any, default_value: Any = '') -> Any:
         """Custom default filter that handles None and empty strings"""

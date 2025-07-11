@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from lib.models import Config
 from lib.validation import ComprehensiveValidator
 from lib.service_discovery import ServiceDiscovery
+from lib.deployment import ProxmoxDeployer
 
 # Initialize Typer app and Rich console
 app = typer.Typer(
@@ -174,89 +175,95 @@ def deploy_services_impl(services: List[str], config: Config, verbose: bool = Fa
     """Implementation of service deployment"""
     console.print(f"\n🚀 Starting deployment of {len(services)} services...", style="bold green")
     
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        console=console,
-    ) as progress:
+    try:
+        # Initialize deployer
+        deployer = ProxmoxDeployer(config)
         
-        # Phase 1: Infrastructure Setup
-        infra_task = progress.add_task("Setting up infrastructure...", total=2)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            console=console,
+        ) as progress:
+            
+            # Phase 1: Infrastructure Setup
+            infra_task = progress.add_task("Setting up infrastructure...", total=2)
+            
+            # Network setup
+            progress.update(infra_task, description="Setting up networking...")
+            deployer.setup_networking(verbose)
+            progress.update(infra_task, advance=1)
+            
+            # Storage setup
+            progress.update(infra_task, description="Setting up storage...")
+            deployer.setup_storage(verbose)
+            progress.update(infra_task, advance=1)
+            
+            # Phase 2: Service Deployment
+            service_task = progress.add_task("Deploying services...", total=len(services))
+            
+            for service_name in services:
+                progress.update(service_task, description=f"Deploying {service_name}...")
+                deployer.deploy_single_service(service_name, verbose)
+                progress.update(service_task, advance=1)
         
-        # Network setup
-        progress.update(infra_task, description="Setting up networking...")
-        setup_networking(config, verbose)
-        progress.update(infra_task, advance=1)
+        # Deployment complete
+        console.print("\n🎉 Deployment completed successfully!", style="bold green")
+        print_deployment_summary(config, services)
         
-        # Storage setup
-        progress.update(infra_task, description="Setting up storage...")
-        setup_storage(config, verbose)
-        progress.update(infra_task, advance=1)
-        
-        # Phase 2: Service Deployment
-        service_task = progress.add_task("Deploying services...", total=len(services))
-        
-        for service_name in services:
-            progress.update(service_task, description=f"Deploying {service_name}...")
-            deploy_single_service(service_name, config, verbose)
-            progress.update(service_task, advance=1)
-    
-    # Deployment complete
-    console.print("\n🎉 Deployment completed successfully!", style="bold green")
-    print_deployment_summary(config)
+    except Exception as e:
+        console.print(f"\n❌ Deployment failed: {e}", style="red")
+        raise
 
 
-def setup_networking(config: Config, verbose: bool = False):
-    """Set up networking infrastructure"""
-    if verbose:
-        console.print(f"📡 Setting up container bridge: {config.network.container_bridge}")
-    
-    # TODO: Implement actual networking setup
-    # This would create the container bridge, set up iptables rules, etc.
-    pass
+# Placeholder functions removed - now using ProxmoxDeployer class
 
 
-def setup_storage(config: Config, verbose: bool = False):
-    """Set up storage infrastructure"""
-    if verbose:
-        console.print(f"💾 Setting up NFS mounts from {config.storage.nfs_server}")
-    
-    # TODO: Implement actual storage setup
-    # This would set up NFS mounts, create directories, etc.
-    pass
-
-
-def deploy_single_service(service_name: str, config: Config, verbose: bool = False):
-    """Deploy a single service"""
-    if verbose:
-        console.print(f"📦 Deploying service: {service_name}")
-    
-    # TODO: Implement actual service deployment
-    # This would:
-    # 1. Process service templates with Jinja2
-    # 2. Create LXC container via Proxmox API
-    # 3. Deploy Docker Compose configuration
-    # 4. Start the service
-    pass
-
-
-def print_deployment_summary(config: Config):
+def print_deployment_summary(config: Config, deployed_services: List[str] = None):
     """Print deployment summary with service URLs"""
     console.print("\n📋 Deployment Summary:", style="bold")
     console.print("=" * 60, style="dim")
     
-    console.print(f"\n🌐 Core Services:")
-    console.print(f"  • Pi-hole DNS:        https://pihole.{config.cluster.domain}/admin")
-    console.print(f"  • Nginx Proxy:        https://proxy.{config.cluster.domain}:81")
-    console.print(f"  • Grafana:            https://grafana.{config.cluster.domain}")
-    console.print(f"  • Authentik SSO:      https://auth.{config.cluster.domain}")
+    if not deployed_services:
+        deployed_services = []
     
-    console.print(f"\n🔐 Default Credentials:")
-    console.print(f"  • Nginx Proxy:        admin@example.com / changeme")
-    console.print(f"  • Pi-hole:            admin / [generated]")
-    console.print(f"  • Grafana:            admin / admin")
-    console.print(f"  • Authentik:          admin@{config.cluster.domain} / [from config]")
+    # Service URL mappings
+    service_urls = {
+        'pihole': f"https://pihole.{config.cluster.domain}/admin",
+        'vpn-gateway': f"http://10.0.0.42:8000",
+        'nginx-proxy': f"https://proxy.{config.cluster.domain}:81", 
+        'homepage': f"https://{config.cluster.domain}",
+        'monitoring': f"https://grafana.{config.cluster.domain}",
+        'authentik': f"https://auth.{config.cluster.domain}"
+    }
+    
+    # Service credentials
+    service_credentials = {
+        'pihole': "admin / [auto-generated]",
+        'nginx-proxy': "admin@example.com / changeme",
+        'monitoring': "admin / admin",
+        'authentik': f"admin@{config.cluster.domain} / [from config]"
+    }
+    
+    # Only show deployed services
+    if deployed_services:
+        console.print(f"\n🌐 Deployed Services:")
+        for service in deployed_services:
+            if service in service_urls:
+                console.print(f"  • {service.title()}: {service_urls[service]}")
+        
+        console.print(f"\n🔐 Default Credentials:")
+        for service in deployed_services:
+            if service in service_credentials:
+                console.print(f"  • {service.title()}: {service_credentials[service]}")
+    else:
+        console.print(f"\n🌐 Available Services:")
+        for service, url in service_urls.items():
+            console.print(f"  • {service.title()}: {url}")
+        
+        console.print(f"\n🔐 Default Credentials:")
+        for service, creds in service_credentials.items():
+            console.print(f"  • {service.title()}: {creds}")
     
     console.print(f"\n📊 Container Network:")
     console.print(f"  • Management:         {config.network.management_subnet}")
