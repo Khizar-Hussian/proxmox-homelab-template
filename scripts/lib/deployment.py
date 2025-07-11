@@ -299,30 +299,40 @@ class ProxmoxDeployer:
         console.print(f"✅ Docker installed in container {container_id}")
     
     def _execute_in_container(self, container_id: int, command: str):
-        """Execute command in container"""
-        node_name = self._get_node_name()
-        
+        """Execute command in container using subprocess"""
         try:
-            result = self.proxmox.nodes(node_name).lxc(container_id).exec.post(command=command)
-            # Note: This is a simplified implementation
-            # In practice, you might want to check the exit code and handle errors
-            return result
+            # Use pct exec directly since the API exec method is not implemented in proxmoxer
+            result = subprocess.run(
+                ['pct', 'exec', str(container_id), '--', 'bash', '-c', command],
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode != 0:
+                raise ProxmoxDeploymentError(f"Command failed with exit code {result.returncode}: {result.stderr}")
+            
+            return result.stdout
+            
+        except subprocess.TimeoutExpired:
+            raise ProxmoxDeploymentError(f"Command timed out in container {container_id}")
         except Exception as e:
             raise ProxmoxDeploymentError(f"Failed to execute command in container {container_id}: {e}")
     
     def _upload_file_to_container(self, container_id: int, content: str, path: str):
         """Upload file content to container"""
-        node_name = self._get_node_name()
-        
         try:
             # Create directory if it doesn't exist
             dir_path = str(Path(path).parent)
             self._execute_in_container(container_id, f"mkdir -p {dir_path}")
             
-            # Write file content
-            # This is a simplified implementation - in practice you'd use the file upload API
-            escaped_content = content.replace('"', '\\"').replace('$', '\\$')
-            self._execute_in_container(container_id, f'echo "{escaped_content}" > {path}')
+            # Write file content using a here document to avoid escaping issues
+            heredoc_delimiter = "EOF_HOMELAB_DEPLOY"
+            command = f"""cat > {path} << '{heredoc_delimiter}'
+{content}
+{heredoc_delimiter}"""
+            
+            self._execute_in_container(container_id, command)
             
         except Exception as e:
             raise ProxmoxDeploymentError(f"Failed to upload file to container {container_id}: {e}")
