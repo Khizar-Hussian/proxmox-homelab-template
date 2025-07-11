@@ -282,17 +282,18 @@ class ProxmoxDeployer:
         console.print(f"🐳 Installing Docker in container {container_id}")
         
         commands = [
-            "apt-get update",
-            "apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release",
-            "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg",
-            "echo \"deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" | tee /etc/apt/sources.list.d/docker.list > /dev/null",
-            "apt-get update",
-            "apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin",
-            "systemctl enable docker",
-            "systemctl start docker"
+            ("apt-get update", "Updating package lists"),
+            ("apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release", "Installing prerequisites"),
+            ("curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg", "Adding Docker GPG key"),
+            ("echo \"deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" | tee /etc/apt/sources.list.d/docker.list > /dev/null", "Adding Docker repository"),
+            ("apt-get update", "Updating package lists with Docker repo"),
+            ("apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin", "Installing Docker"),
+            ("systemctl enable docker", "Enabling Docker service"),
+            ("systemctl start docker", "Starting Docker service")
         ]
         
-        for cmd in commands:
+        for cmd, description in commands:
+            console.print(f"⚙️  {description}...")
             self._execute_in_container(container_id, cmd)
         
         console.print(f"✅ Docker installed in container {container_id}")
@@ -326,7 +327,7 @@ class ProxmoxDeployer:
         except Exception as e:
             raise ProxmoxDeploymentError(f"Failed to upload file to container {container_id}: {e}")
     
-    def _wait_for_container_ready(self, container_id: int, timeout: int = 60):
+    def _wait_for_container_ready(self, container_id: int, timeout: int = 180):
         """Wait for container to be ready"""
         console.print(f"⏳ Waiting for container {container_id} to be ready...")
         
@@ -335,18 +336,29 @@ class ProxmoxDeployer:
         for i in range(timeout):
             try:
                 status = self.proxmox.nodes(node_name).lxc(container_id).status.current.get()
-                if status['status'] == 'running':
+                current_status = status['status']
+                
+                # Print status updates every 10 seconds
+                if i % 10 == 0:
+                    console.print(f"🔄 Container {container_id} status: {current_status} (waiting {i}s)")
+                
+                if current_status == 'running':
                     # Additional check - try to execute a simple command
                     try:
+                        console.print(f"🧪 Testing container {container_id} responsiveness...")
                         self._execute_in_container(container_id, "echo 'ready'")
-                        console.print(f"✅ Container {container_id} is ready")
+                        console.print(f"✅ Container {container_id} is ready and responsive")
                         return
-                    except:
+                    except Exception as e:
+                        if i % 10 == 0:
+                            console.print(f"⚠️  Container {container_id} running but not yet responsive: {e}")
                         pass
                 
                 time.sleep(1)
                 
-            except Exception:
+            except Exception as e:
+                if i % 10 == 0:
+                    console.print(f"⚠️  Error checking container {container_id}: {e}")
                 time.sleep(1)
         
         raise ProxmoxDeploymentError(f"Container {container_id} not ready after {timeout} seconds")
