@@ -289,14 +289,26 @@ class ProxmoxDeployer:
         except:
             pass  # Continue even if cleanup fails
         
+        # Check network connectivity first
+        try:
+            console.print("🌐 Testing network connectivity...")
+            result = self._execute_in_container(container_id, "ping -c 1 8.8.8.8")
+            console.print("✅ Network connectivity OK")
+        except:
+            console.print("❌ Network connectivity failed")
+            # Try to fix DNS
+            console.print("🔧 Fixing DNS configuration...")
+            self._execute_in_container(container_id, "echo 'nameserver 8.8.8.8' > /etc/resolv.conf")
+            self._execute_in_container(container_id, "echo 'nameserver 8.8.4.4' >> /etc/resolv.conf")
+        
         commands = [
             ("locale-gen en_US.UTF-8", "Generating locales"),
             ("update-locale LANG=en_US.UTF-8", "Setting system locale"),
-            ("apt-get update", "Updating package lists"),
+            ("apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30", "Updating package lists"),
             ("apt-get install -y --no-install-recommends apt-transport-https ca-certificates curl gnupg lsb-release", "Installing prerequisites"),
             ("curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg", "Adding Docker GPG key"),
             ("echo \"deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" | tee /etc/apt/sources.list.d/docker.list > /dev/null", "Adding Docker repository"),
-            ("apt-get update", "Updating package lists with Docker repo"),
+            ("apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30", "Updating package lists with Docker repo"),
             ("apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-compose-plugin", "Installing Docker"),
             ("systemctl enable docker", "Enabling Docker service"),
             ("systemctl start docker", "Starting Docker service"),
