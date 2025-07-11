@@ -294,18 +294,25 @@ class SystemValidator:
         """Validate system prerequisites"""
         console.print("🔧 Checking system prerequisites...", style="blue")
         
-        # Check required commands
+        # Check required commands (only those needed on deployment host)
         required_commands = [
-            "docker",
-            "docker-compose", 
-            "jq",
             "curl",
             "ping"
+        ]
+        
+        # Optional but recommended commands
+        optional_commands = [
+            "jq"
         ]
         
         for command in required_commands:
             if not self._check_command(command):
                 self.errors.append(f"Required command not found: {command}")
+        
+        # Check optional commands
+        for command in optional_commands:
+            if not self._check_command(command):
+                self.warnings.append(f"Optional command not found: {command} (recommended for troubleshooting)")
         
         # Check Python version
         import sys
